@@ -501,7 +501,7 @@ app.get('/u/:token/manifest.json', tokenMiddleware, function (req, res) {
     name:        'Podcasts',
     version:     '2.0.0',
     description: 'Search and stream any podcast. 4M+ shows via Podcast Index.',
-    icon:        'https://is1-ssl.mzstatic.com/image/thumb/Purple126/v4/32/dc/fc/32dcfc3a-d9aa-46b3-85fb-2bc8a9d3a574/AppIcon-0-0-1x_U007emarketing-0-10-0-85-220.png/512x512bb.jpg',
+    icon:        'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRm7Pco873CnlEKMoATgv0rNfOXQNdHg4strPErJftrlg&s=10',
     resources:   ['search', 'stream', 'catalog'],
     types:       ['track', 'album', 'artist', 'playlist']
   });
