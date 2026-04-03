@@ -437,44 +437,36 @@ function buildConfigPage(baseUrl) {
   // ── Client JS ───────────────────────────────────────────────────────────
   h += '<script>';
   h += 'var _gu="",_ru="";';
-  
-  // credential change
   h += 'function onCredChange(){';
   h += 'var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim();';
   h += 'var btn=document.getElementById("genBtn");';
   h += 'if((pik&&pis)||tk){btn.disabled=false;btn.textContent="Generate My Addon URL";}else{btn.disabled=true;btn.textContent="Enter API credentials first";}';
   h += '}';
-  
-  // Add input listeners
   h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=document.getElementById("taddyKey").oninput=onCredChange;';
-  
-  // generate
   h += 'function generate(){';
   h += 'var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim();';
   h += 'if(!pik&&!pis&&!tk){alert("Enter credentials.");return;}';
   h += 'var btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");';
   h += 'btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";';
-  h += 'fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk})})'
-    .then(r=>r.json())
-    .then(d=>{
-      if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}
-      _gu=d.manifestUrl;
-      document.getElementById("genUrl").textContent=_gu;
-      document.getElementById("genBox").style.display="block";
-      document.getElementById("impToken").value=_gu;
-      st.className="status ok";st.textContent="✓ Credentials valid — URL ready";
-      btn.disabled=false;btn.textContent="Regenerate";
-    })
-    .catch(e=>{st.className="status err";st.textContent="Error: "+e;btn.disabled=false;btn.textContent="Generate URL";});
+  h += 'fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk})})';
+  h += '.then(function(r){return r.json();})';
+  h += '.then(function(d){';
+  h += 'if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}';
+  h += '_gu=d.manifestUrl;';
+  h += 'document.getElementById("genUrl").textContent=_gu;';
+  h += 'document.getElementById("genBox").style.display="block";';
+  h += 'document.getElementById("impToken").value=_gu;';
+  h += 'st.className="status ok";st.textContent="✓ Credentials valid — URL ready";';
+  h += 'btn.disabled=false;btn.textContent="Regenerate";';
+  h += '})';
+  h += '.catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});';
   h += '}';
-  
-  // copy, refresh, import functions (unchanged from original)
-  h += 'function copyGen(){if(!_gu)return;navigator.clipboard.writeText(_gu).then(()=>{var b=document.getElementById("copyGenBtn");b.textContent="Copied!";setTimeout(()=>{b.textContent="Copy URL";},1500);});}';
-  h += 'function doRefresh(){var btn=document.getElementById("refBtn"),eu=document.getElementById("existingUrl").value.trim();if(!eu){alert("Paste URL.");return;}btn.disabled=true;btn.textContent="Checking...";fetch("/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({existingUrl:eu})}).then(r=>r.json()).then(d=>{if(d.error){alert(d.error);btn.disabled=false;btn.textContent="Restore";return;}_ru=d.manifestUrl;document.getElementById("refUrl").textContent=_ru;document.getElementById("refBox").style.display="block";document.getElementById("impToken").value=_ru;btn.disabled=false;btn.textContent="Restore Again";}).catch(e=>{alert("Error: "+e);btn.disabled=false;btn.textContent="Restore";});}';
-  h += 'function copyRef(){if(!_ru)return;navigator.clipboard.writeText(_ru).then(()=>{var b=document.getElementById("copyRefBtn");b.textContent="Copied!";setTimeout(()=>{b.textContent="Copy URL";},1500);});}';
-  h += 'function getTok(s){var m=s.match(/\/u\/([a-f0-9]{28})\//);return m?m[1]:null;}';
-  h += 'function hesc(s){return String(s||"").replace(/&/g,"&").replace(/</g,"<").replace(/>/g,">");}';
-  h += 'function doImport(){var btn=document.getElementById("impBtn"),raw=document.getElementById("impToken").value.trim(),purl=document.getElementById("impUrl").value.trim(),st=document.getElementById("impStatus"),pv=document.getElementById("impPreview");if(!raw||!purl){st.className="status err";st.textContent="Enter URL and podcast.";return;}var tok=getTok(raw);if(!tok){st.className="status err";st.textContent="Invalid token in URL.";return;}btn.disabled=true;btn.textContent="Fetching...";st.className="status spin";st.textContent="Fetching episodes...";fetch("/u/"+tok+"/import?url="+encodeURIComponent(purl)).then(r=>{if(!r.ok)return r.json().then(e=>Promise.reject(e));return r.json();}).then(data=>{var tracks=data.tracks||[];if(!tracks.length)throw new Error("No episodes.");var rows=tracks.slice(0,50).map((t,i)=>\'<div class="tr"><span class="tn">\'+(i+1)+\'</span><div class="ti"><div class="tt">\'+hesc(t.title polished)+\'</div><div class="ta">\'+hesc(t.artist)+\'</div></div></div>\').join("");if(tracks.length>50)rows+=\'<div class="tr" style="text-align:center;color:#555">+\'+(tracks.length-50)+\' more</div>\';pv.innerHTML=rows;pv.style.display="block";st.className="status ok";st.textContent="Found "+tracks.length+" episodes";var lines=["Title,Artist,Album,Duration"];tracks.forEach(t=>{function ce(s){s=String(s||"");if(s.indexOf(",")!==-1||s.indexOf(\'"\' )!==-1){s=\'"\'+s.replace(/"/g,\'""\')+\'"\'}return s;}lines.push(ce(t.title)+","+ce(t.artist)+","+ce(data.title||"")+","+ce(t.duration||""));});var blob=new Blob([lines.join("\\n")],{type:"text/csv"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(data.title||"podcast").replace(/[^a-zA-Z0-9 _-]/g,"").trim()+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);btn.disabled=false;btn.textContent="Download CSV";}).catch(e=>{st.className="status err";st.textContent=e.message;btn.disabled=false;btn.textContent="Download CSV";});}';
+  h += 'function copyGen(){if(!_gu)return;navigator.clipboard.writeText(_gu).then(function(){var b=document.getElementById("copyGenBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
+  h += 'function doRefresh(){var btn=document.getElementById("refBtn"),eu=document.getElementById("existingUrl").value.trim();if(!eu){alert("Paste URL.");return;}btn.disabled=true;btn.textContent="Checking...";fetch("/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({existingUrl:eu})}).then(function(r){return r.json();}).then(function(d){if(d.error){alert(d.error);btn.disabled=false;btn.textContent="Restore";return;}_ru=d.manifestUrl;document.getElementById("refUrl").textContent=_ru;document.getElementById("refBox").style.display="block";document.getElementById("impToken").value=_ru;btn.disabled=false;btn.textContent="Restore Again";}).catch(function(e){alert("Error: "+e.message);btn.disabled=false;btn.textContent="Restore";});}';
+  h += 'function copyRef(){if(!_ru)return;navigator.clipboard.writeText(_ru).then(function(){var b=document.getElementById("copyRefBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
+  h += 'function getTok(s){var m=s.match(/\\/u\\/([a-f0-9]{28})\\//);return m?m[1]:null;}';
+  h += 'function hesc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}';
+  h += 'function doImport(){var btn=document.getElementById("impBtn"),raw=document.getElementById("impToken").value.trim(),purl=document.getElementById("impUrl").value.trim(),st=document.getElementById("impStatus"),pv=document.getElementById("impPreview");if(!raw||!purl){st.className="status err";st.textContent="Enter URL and podcast.";return;}var tok=getTok(raw);if(!tok){st.className="status err";st.textContent="Invalid token in URL.";return;}btn.disabled=true;btn.textContent="Fetching...";st.className="status spin";st.textContent="Fetching episodes...";fetch("/u/"+tok+"/import?url="+encodeURIComponent(purl)).then(function(r){if(!r.ok)return r.json().then(function(e){throw new Error(e.error||("Server error "+r.status));});return r.json();}).then(function(data){var tracks=data.tracks||[];if(!tracks.length)throw new Error("No episodes.");var rows=tracks.slice(0,50).map(function(t,i){return \'<div class="tr"><span class="tn">\'+(i+1)+\'</span><div class="ti"><div class="tt">\'+hesc(t.title)+\'</div><div class="ta">\'+hesc(t.artist)+\'</div></div></div>\';}).join("");if(tracks.length>50)rows+=\'<div class="tr" style="text-align:center;color:#555">+\'+(tracks.length-50)+\' more</div>\';pv.innerHTML=rows;pv.style.display="block";st.className="status ok";st.textContent="Found "+tracks.length+" episodes in \\""+(data.title||"podcast")+"\\"";var lines=["Title,Artist,Album,Duration"];tracks.forEach(function(t){function ce(s){s=String(s||"");if(s.indexOf(",")!==-1||s.indexOf(\'"\')!==-1){s=\'"\'+s.replace(/"/g,\'""\')+\'"\';}return s;}lines.push(ce(t.title)+","+ce(t.artist)+","+ce(data.title||"")+","+ce(t.duration||""));});var blob=new Blob([lines.join("\\n")],{type:"text/csv"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(data.title||"podcast").replace(/[^a-zA-Z0-9 _-]/g,"").trim()+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);btn.disabled=false;btn.textContent="Download CSV";}).catch(function(e){st.className="status err";st.textContent=e.message;btn.disabled=false;btn.textContent="Download CSV";});}';
   h += '<\/script></body></html>';
   return h;
 }
