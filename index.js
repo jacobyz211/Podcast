@@ -24,7 +24,7 @@ async function redisSave(token, entry) {
     await redis.set('pod:token:' + token, JSON.stringify({
       createdAt: entry.createdAt, lastUsed: entry.lastUsed, reqCount: entry.reqCount,
       piKey: entry.piKey, piSecret: entry.piSecret,
-      taddyKey: entry.taddyKey || '', taddyUserId: entry.taddyUserId || ''   // ← added taddyUserId
+      taddyKey: entry.taddyKey || '', taddyUserId: entry.taddyUserId || ''
     }));
   } catch (e) { console.error('[Redis] Save failed:', e.message); }
 }
@@ -58,7 +58,7 @@ async function getTokenEntry(token) {
   const entry = {
     createdAt: saved.createdAt, lastUsed: saved.lastUsed, reqCount: saved.reqCount, rateWin: [],
     piKey: saved.piKey || '', piSecret: saved.piSecret || '',
-    taddyKey: saved.taddyKey || '', taddyUserId: saved.taddyUserId || ''   // ← added
+    taddyKey: saved.taddyKey || '', taddyUserId: saved.taddyUserId || ''
   };
   TOKEN_CACHE.set(token, entry);
   return entry;
@@ -76,15 +76,11 @@ async function tokenMiddleware(req, res, next) {
   const entry = await getTokenEntry(req.params.token);
   if (!entry) return res.status(404).json({ error: 'Invalid token.' });
   if (!checkRateLimit(entry)) return res.status(429).json({ error: 'Rate limit exceeded.' });
-
   const hasPi    = entry.piKey && entry.piSecret;
-  const hasTaddy = entry.taddyKey && entry.taddyUserId;   // ← both required for Taddy
+  const hasTaddy = entry.taddyKey && entry.taddyUserId;
   if (!hasPi && !hasTaddy) {
-    return res.status(403).json({
-      error: 'No credentials found. Generate a new URL with Podcast Index key/secret OR Taddy API key + User ID.'
-    });
+    return res.status(403).json({ error: 'No credentials found. Generate a new URL with Podcast Index key/secret OR Taddy API key + User ID.' });
   }
-
   req.tokenEntry = entry;
   if (entry.reqCount % 20 === 0) redisSave(req.params.token, entry);
   next();
@@ -102,22 +98,13 @@ function cacheEpisode(ep) { if (ep && ep.id) EPISODE_CACHE.set(String(ep.id), ep
 // ─── Podcast Index API ────────────────────────────────────────────────────
 function piHeaders(entry) {
   const unixTime = Math.floor(Date.now() / 1000);
-  const hash     = crypto.createHash('sha1')
-    .update(entry.piKey + entry.piSecret + String(unixTime))  // ← explicit String()
-    .digest('hex');
-  return {
-    'X-Auth-Key':    entry.piKey,
-    'X-Auth-Date':   String(unixTime),
-    'Authorization': hash,
-    'User-Agent':    'EclipsePodcastAddon/2.1'
-  };
+  const hash     = crypto.createHash('sha1').update(entry.piKey + entry.piSecret + String(unixTime)).digest('hex');
+  return { 'X-Auth-Key': entry.piKey, 'X-Auth-Date': String(unixTime), 'Authorization': hash, 'User-Agent': 'EclipsePodcastAddon/2.1' };
 }
 
 async function piGet(entry, endpoint, params) {
   try {
-    const r = await axios.get('https://api.podcastindex.org/api/1.0' + endpoint, {
-      params, headers: piHeaders(entry), timeout: 12000
-    });
+    const r = await axios.get('https://api.podcastindex.org/api/1.0' + endpoint, { params, headers: piHeaders(entry), timeout: 12000 });
     return r.data;
   } catch (e) { console.warn('[PI]', endpoint, e.message); return null; }
 }
@@ -128,40 +115,28 @@ async function piValidate(piKey, piSecret) {
 }
 
 // ─── Taddy GraphQL API ────────────────────────────────────────────────────
-// Taddy is a GraphQL API — POST to https://api.taddy.org with X-USER-ID + X-API-KEY headers
 async function taddyQuery(entry, query, variables = {}) {
   if (!entry.taddyKey || !entry.taddyUserId) return null;
   try {
-    const r = await axios.post('https://api.taddy.org',
-      { query, variables },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-USER-ID':    String(entry.taddyUserId),
-          'X-API-KEY':    entry.taddyKey,
-          'User-Agent':   'EclipsePodcastAddon/2.1'
-        },
-        timeout: 12000
-      }
-    );
+    const r = await axios.post('https://api.taddy.org', { query, variables }, {
+      headers: { 'Content-Type': 'application/json', 'X-USER-ID': String(entry.taddyUserId), 'X-API-KEY': entry.taddyKey, 'User-Agent': 'EclipsePodcastAddon/2.1' },
+      timeout: 12000
+    });
     return r.data?.data || null;
   } catch (e) { console.warn('[Taddy]', e.message); return null; }
 }
 
 async function taddyValidate(taddyKey, taddyUserId) {
-  const data = await taddyQuery(
-    { taddyKey, taddyUserId },
-    `{ getPodcastSeries(name: "The Daily") { uuid name } }`
-  );
+  const data = await taddyQuery({ taddyKey, taddyUserId }, `{ getPodcastSeries(name: "The Daily") { uuid name } }`);
   return !!(data?.getPodcastSeries?.uuid);
 }
 
-// ─── Taddy GQL query strings ──────────────────────────────────────────────
+// ─── Taddy GQL queries ────────────────────────────────────────────────────
 const GQL_SEARCH = `
   query Search($term: String!) {
     searchForTerm(term: $term, filterForTypes: PODCASTSERIES) {
       podcastSeries {
-        uuid name description imageUrl author
+        uuid name description imageUrl authorName
         episodes(limitPerPage: 2) { uuid name audioUrl duration }
       }
     }
@@ -171,7 +146,7 @@ const GQL_SEARCH = `
 const GQL_GET_PODCAST = `
   query GetPodcast($uuid: ID!) {
     getPodcastSeries(uuid: $uuid) {
-      uuid name description imageUrl author
+      uuid name description imageUrl authorName
       episodes(limitPerPage: 200) { uuid name audioUrl duration imageUrl }
     }
   }
@@ -186,108 +161,53 @@ const GQL_GET_EPISODE = `
   }
 `;
 
-// ─── iTunes API (no key required) ────────────────────────────────────────
+// ─── iTunes API ───────────────────────────────────────────────────────────
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 
 async function itunesGet(endpoint, params) {
   try {
-    const r = await axios.get('https://itunes.apple.com' + endpoint, {
-      params, headers: { 'User-Agent': UA, 'Accept': 'application/json' }, timeout: 12000
-    });
+    const r = await axios.get('https://itunes.apple.com' + endpoint, { params, headers: { 'User-Agent': UA, 'Accept': 'application/json' }, timeout: 12000 });
     return r.data;
   } catch (e) { console.warn('[iTunes]', e.message); return null; }
 }
 
 // ─── Format helpers ───────────────────────────────────────────────────────
-function artworkHd(url) {
-  if (!url) return null;
-  return url.replace(/\/\d+x\d+(bb|cc)\./, '/600x600bb.');
-}
+function artworkHd(url) { if (!url) return null; return url.replace(/\/\d+x\d+(bb|cc)\./, '/600x600bb.'); }
 
 function detectFormat(url) {
   if (!url) return 'mp3';
   const u = url.toLowerCase().split('?')[0];
   if (u.endsWith('.m4a') || u.includes('/m4a/')) return 'm4a';
-  if (u.endsWith('.aac'))                          return 'aac';
-  if (u.endsWith('.ogg') || u.endsWith('.opus'))   return 'ogg';
+  if (u.endsWith('.aac')) return 'aac';
+  if (u.endsWith('.ogg') || u.endsWith('.opus')) return 'ogg';
   return 'mp3';
 }
 
-function durationSec(ms) {
-  if (!ms) return null;
-  const n = Number(ms);
-  return isNaN(n) ? null : Math.floor(n / 1000);
-}
+function durationSec(ms) { if (!ms) return null; const n = Number(ms); return isNaN(n) ? null : Math.floor(n / 1000); }
 
 // ─── Mappers ──────────────────────────────────────────────────────────────
 function mapPiEpisode(ep, showTitle) {
-  const obj = {
-    id:         'pi_ep_' + String(ep.id),
-    title:      cleanText(ep.title),
-    artist:     cleanText(ep.feedAuthor || ep.feedTitle || showTitle || ''),
-    album:      cleanText(ep.feedTitle  || showTitle || ''),
-    duration:   typeof ep.duration === 'number' ? ep.duration : null,
-    artworkURL: ep.image || ep.feedImage || null,
-    streamURL:  ep.enclosureUrl || null,
-    format:     detectFormat(ep.enclosureUrl || '')
-  };
-  cacheEpisode(obj);
-  return obj;
+  const obj = { id: 'pi_ep_' + String(ep.id), title: cleanText(ep.title), artist: cleanText(ep.feedAuthor || ep.feedTitle || showTitle || ''), album: cleanText(ep.feedTitle || showTitle || ''), duration: typeof ep.duration === 'number' ? ep.duration : null, artworkURL: ep.image || ep.feedImage || null, streamURL: ep.enclosureUrl || null, format: detectFormat(ep.enclosureUrl || '') };
+  cacheEpisode(obj); return obj;
 }
 
-// Taddy GraphQL returns uuid (not id), audioUrl (not audio), name (not title)
 function mapTaddyEpisode(ep, showTitle = '') {
-  const obj = {
-    id:         'taddy_ep_' + String(ep.uuid),
-    title:      cleanText(ep.name),
-    artist:     cleanText(ep.podcastSeries?.name || showTitle || ''),
-    album:      cleanText(ep.podcastSeries?.name || showTitle || ''),
-    duration:   ep.duration || null,
-    artworkURL: ep.imageUrl || ep.podcastSeries?.imageUrl || null,
-    streamURL:  ep.audioUrl || null,
-    format:     detectFormat(ep.audioUrl || '')
-  };
-  cacheEpisode(obj);
-  return obj;
+  const obj = { id: 'taddy_ep_' + String(ep.uuid), title: cleanText(ep.name), artist: cleanText(ep.podcastSeries?.name || showTitle || ''), album: cleanText(ep.podcastSeries?.name || showTitle || ''), duration: ep.duration || null, artworkURL: ep.imageUrl || ep.podcastSeries?.imageUrl || null, streamURL: ep.audioUrl || null, format: detectFormat(ep.audioUrl || '') };
+  cacheEpisode(obj); return obj;
 }
 
 function mapPiFeed(f) {
-  return {
-    id:         'pi_' + String(f.id),
-    title:      cleanText(f.title),
-    artist:     cleanText(f.author || f.ownerName || ''),
-    artworkURL: f.image || f.artwork || null,
-    trackCount: f.episodeCount || null,
-    year:       f.newestItemPublishTime
-      ? String(new Date(f.newestItemPublishTime * 1000).getFullYear()) : null
-  };
+  return { id: 'pi_' + String(f.id), title: cleanText(f.title), artist: cleanText(f.author || f.ownerName || ''), artworkURL: f.image || f.artwork || null, trackCount: f.episodeCount || null, year: f.newestItemPublishTime ? String(new Date(f.newestItemPublishTime * 1000).getFullYear()) : null };
 }
 
-// Taddy GraphQL returns uuid, name, imageUrl, author
 function mapTaddyPodcast(pod) {
-  return {
-    id:         'taddy_' + String(pod.uuid),
-    title:      cleanText(pod.name),
-    artist:     cleanText(pod.author || ''),
-    artworkURL: pod.imageUrl || null,
-    trackCount: null,
-    year:       null
-  };
+  // Taddy schema uses authorName (not author) per their dataset export
+  return { id: 'taddy_' + String(pod.uuid), title: cleanText(pod.name), artist: cleanText(pod.authorName || ''), artworkURL: pod.imageUrl || null, trackCount: null, year: null };
 }
 
 function mapItunesEpisode(ep) {
-  const obj = {
-    id:         'ep_' + String(ep.trackId),
-    title:      cleanText(ep.trackName),
-    artist:     cleanText(ep.collectionName || ep.artistName),
-    album:      cleanText(ep.collectionName),
-    duration:   durationSec(ep.trackTimeMillis),
-    artworkURL: artworkHd(ep.artworkUrl600 || ep.artworkUrl160),
-    streamURL:  ep.episodeUrl || null,
-    format:     detectFormat(ep.episodeUrl || '')
-  };
-  cacheEpisode(obj);
-  return obj;
+  const obj = { id: 'ep_' + String(ep.trackId), title: cleanText(ep.trackName), artist: cleanText(ep.collectionName || ep.artistName), album: cleanText(ep.collectionName), duration: durationSec(ep.trackTimeMillis), artworkURL: artworkHd(ep.artworkUrl600 || ep.artworkUrl160), streamURL: ep.episodeUrl || null, format: detectFormat(ep.episodeUrl || '') };
+  cacheEpisode(obj); return obj;
 }
 
 // ─── RSS helpers ──────────────────────────────────────────────────────────
@@ -315,10 +235,7 @@ function parseDuration(s) {
 
 async function fetchRss(feedUrl) {
   try {
-    const r = await axios.get(feedUrl, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
-      timeout: 15000, responseType: 'text', validateStatus: s => s < 500
-    });
+    const r = await axios.get(feedUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' }, timeout: 15000, responseType: 'text', validateStatus: s => s < 500 });
     return r.data || null;
   } catch (e) { return null; }
 }
@@ -332,29 +249,16 @@ function parseRssToShow(xml) {
   const showArtist  = rssTag(chan, 'itunes:author') || rssTag(chan, 'managingEditor') || '';
   const showArt     = rssAttr(chan, 'itunes:image', 'href') || '';
   const showDesc    = rssTag(chanNoItems, 'description') || rssTag(chanNoItems, 'itunes:summary') || '';
-
   const items = []; const itemRx = /<item[^>]*>([\s\S]*?)<\/item>/gi; let m;
   while ((m = itemRx.exec(xml)) !== null) items.push(m[1]);
-
   const tracks = items.map((item, i) => {
     const encUrl = rssAttr(item, 'enclosure', 'url');
     if (!encUrl) return null;
     const guid = rssTag(item, 'guid') || encUrl;
     const hash = crypto.createHash('md5').update(guid).digest('hex').slice(0, 12);
-    const obj  = {
-      id:         'rss_ep_' + hash,
-      title:      cleanText(rssTag(item, 'title')) || ('Episode ' + (i + 1)),
-      artist:     cleanText(showArtist) || cleanText(showTitle),
-      album:      cleanText(showTitle),
-      duration:   parseDuration(rssTag(item, 'itunes:duration')),
-      artworkURL: rssAttr(item, 'itunes:image', 'href') || showArt || null,
-      streamURL:  encUrl,
-      format:     detectFormat(encUrl)
-    };
-    cacheEpisode(obj);
-    return obj;
+    const obj  = { id: 'rss_ep_' + hash, title: cleanText(rssTag(item, 'title')) || ('Episode ' + (i + 1)), artist: cleanText(showArtist) || cleanText(showTitle), album: cleanText(showTitle), duration: parseDuration(rssTag(item, 'itunes:duration')), artworkURL: rssAttr(item, 'itunes:image', 'href') || showArt || null, streamURL: encUrl, format: detectFormat(encUrl) };
+    cacheEpisode(obj); return obj;
   }).filter(Boolean);
-
   return { title: cleanText(showTitle), artist: cleanText(showArtist), artworkURL: showArt || null, description: cleanText(showDesc).slice(0, 300), tracks };
 }
 
@@ -414,93 +318,45 @@ function buildConfigPage(baseUrl) {
   h += '<h1>Podcasts for Eclipse</h1>';
   h += '<p class="sub">Choose Podcast Index (free) OR Taddy API. Both unlock 4M+ podcasts. Takes 2 minutes.</p>';
   h += '<div class="pills"><span class="pill">Episodes & shows</span><span class="pill">Creator pages</span><span class="pill">Playlists</span><span class="pill g">4M+ podcasts</span><span class="pill g">Offline download</span></div>';
-
-  h += '<div class="kstep">';
-  h += '<div class="kstep-title">Step 1 — Choose your API</div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 1 — Choose your API</div>';
   h += '<p><b>Podcast Index (Free):</b> Go to <a href="https://api.podcastindex.org" target="_blank">api.podcastindex.org</a>, create account, copy API Key + Secret.</p>';
-  h += '<p><b>Taddy API:</b> Get API Key + User ID from <a href="https://taddy.org" target="_blank">taddy.org</a> dashboard.</p>';
-  h += '</div>';
-
-  h += '<div class="kstep">';
-  h += '<div class="kstep-title">Step 2 — Enter credentials</div>';
-  // PI row
-  h += '<div class="row2">';
-  h += '<div><div class="lbl">Podcast Index Key</div><input type="text" id="piKey" placeholder="ZQEW8D5ET2L6..."></div>';
-  h += '<div><div class="lbl">Podcast Index Secret</div><input type="password" id="piSecret" placeholder="Your secret..."></div>';
-  h += '</div>';
-  // Taddy row
-  h += '<div class="row2">';
-  h += '<div><div class="lbl">Taddy API Key</div><input type="text" id="taddyKey" placeholder="taddy_xxxxx..."></div>';
-  h += '<div><div class="lbl">Taddy User ID</div><input type="text" id="taddyUserId" placeholder="123456"></div>';
-  h += '</div>';
-  h += '<div class="hint">Enter <b>either</b> Podcast Index Key+Secret <b>or</b> Taddy API Key+User ID (not both needed).</div>';
-  h += '<div class="status" id="credStatus"></div>';
-  h += '</div>';
-
-  h += '<div class="kstep">';
-  h += '<div class="kstep-title">Step 3 — Generate addon URL</div>';
+  h += '<p><b>Taddy API:</b> Get API Key + User ID from <a href="https://taddy.org" target="_blank">taddy.org</a> dashboard.</p></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 2 — Enter credentials</div>';
+  h += '<div class="row2"><div><div class="lbl">Podcast Index Key</div><input type="text" id="piKey" placeholder="ZQEW8D5ET2L6..."></div>';
+  h += '<div><div class="lbl">Podcast Index Secret</div><input type="password" id="piSecret" placeholder="Your secret..."></div></div>';
+  h += '<div class="row2"><div><div class="lbl">Taddy API Key</div><input type="text" id="taddyKey" placeholder="taddy_xxxxx..."></div>';
+  h += '<div><div class="lbl">Taddy User ID</div><input type="text" id="taddyUserId" placeholder="123456"></div></div>';
+  h += '<div class="hint">Enter <b>either</b> Podcast Index Key+Secret <b>or</b> Taddy Key+User ID.</div>';
+  h += '<div class="status" id="credStatus"></div></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 3 — Generate addon URL</div>';
   h += '<button class="bo" id="genBtn" onclick="generate()" disabled>Enter API credentials first</button>';
-  h += '<div class="box" id="genBox"><div class="blbl">Your addon URL — paste into Eclipse</div><div class="burl" id="genUrl"></div><button class="bd" id="copyGenBtn" onclick="copyGen()">Copy URL</button></div>';
-  h += '</div>';
-
+  h += '<div class="box" id="genBox"><div class="blbl">Your addon URL — paste into Eclipse</div><div class="burl" id="genUrl"></div><button class="bd" id="copyGenBtn" onclick="copyGen()">Copy URL</button></div></div>';
   h += '<hr>';
   h += '<div class="lbl">Restore existing URL</div>';
   h += '<input type="text" id="existingUrl" placeholder="Paste your existing addon URL here">';
   h += '<button class="bg" id="refBtn" onclick="doRefresh()">Restore Existing URL</button>';
   h += '<div class="box" id="refBox"><div class="blbl">Restored — same URL, still works</div><div class="burl" id="refUrl"></div><button class="bd" id="copyRefBtn" onclick="copyRef()">Copy URL</button></div>';
-
-  h += '<hr>';
-  h += '<div class="steps">';
+  h += '<hr><div class="steps">';
   h += '<div class="step"><div class="sn">4</div><div class="st">Copy URL above</div></div>';
   h += '<div class="step"><div class="sn">5</div><div class="st">Eclipse → Settings → Connections → Addon</div></div>';
-  h += '<div class="step"><div class="sn">6</div><div class="st">Paste URL → Install</div></div>';
-  h += '</div>';
-  h += '<div class="warn">Credentials survive restarts via Redis. Only reinstall if domain changes.</div>';
-  h += '</div>';
+  h += '<div class="step"><div class="sn">6</div><div class="st">Paste URL → Install</div></div></div>';
+  h += '<div class="warn">Credentials survive restarts via Redis. Only reinstall if domain changes.</div></div>';
 
-  h += '<div class="card">';
-  h += '<span class="badge">Podcast Importer</span>';
+  h += '<div class="card"><span class="badge">Podcast Importer</span>';
   h += '<h2>Import Podcast to Library</h2>';
   h += '<p class="sub">Downloads CSV for Eclipse Library → Import CSV.</p>';
-  h += '<div class="lbl">Your Addon URL</div>';
-  h += '<input type="text" id="impToken" placeholder="Auto-fills after generating">';
-  h += '<div class="lbl">Podcast URL</div>';
-  h += '<input type="text" id="impUrl" placeholder="podcasts.apple.com/... or RSS feed URL">';
+  h += '<div class="lbl">Your Addon URL</div><input type="text" id="impToken" placeholder="Auto-fills after generating">';
+  h += '<div class="lbl">Podcast URL</div><input type="text" id="impUrl" placeholder="podcasts.apple.com/... or RSS feed URL">';
   h += '<button class="bg" id="impBtn" onclick="doImport()">Fetch & Download CSV</button>';
-  h += '<div class="status" id="impStatus"></div>';
-  h += '<div class="preview" id="impPreview"></div>';
-  h += '</div>';
+  h += '<div class="status" id="impStatus"></div><div class="preview" id="impPreview"></div></div>';
 
   h += '<footer>Eclipse Podcast Addon v2.1.0 • Podcast Index + Taddy API • <a href="' + baseUrl + '/health">' + baseUrl + '</a></footer>';
 
   h += '<script>';
   h += 'var _gu="",_ru="";';
-  h += 'function onCredChange(){';
-  h += 'var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim();';
-  h += 'var tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim();';
-  h += 'var btn=document.getElementById("genBtn");';
-  h += 'if((pik&&pis)||(tk&&tuid)){btn.disabled=false;btn.textContent="Generate My Addon URL";}';
-  h += 'else{btn.disabled=true;btn.textContent="Enter API credentials first";}';
-  h += '}';
-  h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=';
-  h += 'document.getElementById("taddyKey").oninput=document.getElementById("taddyUserId").oninput=onCredChange;';
-  h += 'function generate(){';
-  h += 'var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim();';
-  h += 'var tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim();';
-  h += 'if(!pik&&!pis&&!tk&&!tuid){alert("Enter credentials.");return;}';
-  h += 'var btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");';
-  h += 'btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";';
-  h += 'fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk,taddyUserId:tuid})})';
-  h += '.then(function(r){return r.json();})';
-  h += '.then(function(d){';
-  h += 'if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}';
-  h += '_gu=d.manifestUrl;document.getElementById("genUrl").textContent=_gu;';
-  h += 'document.getElementById("genBox").style.display="block";';
-  h += 'document.getElementById("impToken").value=_gu;';
-  h += 'st.className="status ok";st.textContent="✓ Credentials valid — URL ready";';
-  h += 'btn.disabled=false;btn.textContent="Regenerate";})';
-  h += '.catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});';
-  h += '}';
+  h += 'function onCredChange(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn");if((pik&&pis)||(tk&&tuid)){btn.disabled=false;btn.textContent="Generate My Addon URL";}else{btn.disabled=true;btn.textContent="Enter API credentials first";}}';
+  h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=document.getElementById("taddyKey").oninput=document.getElementById("taddyUserId").oninput=onCredChange;';
+  h += 'function generate(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");if(!pik&&!pis&&!tk&&!tuid){alert("Enter credentials.");return;}btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk,taddyUserId:tuid})}).then(function(r){return r.json();}).then(function(d){if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}_gu=d.manifestUrl;document.getElementById("genUrl").textContent=_gu;document.getElementById("genBox").style.display="block";document.getElementById("impToken").value=_gu;st.className="status ok";st.textContent="✓ Credentials valid — URL ready";btn.disabled=false;btn.textContent="Regenerate";}).catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});}';
   h += 'function copyGen(){if(!_gu)return;navigator.clipboard.writeText(_gu).then(function(){var b=document.getElementById("copyGenBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
   h += 'function doRefresh(){var btn=document.getElementById("refBtn"),eu=document.getElementById("existingUrl").value.trim();if(!eu){alert("Paste URL.");return;}btn.disabled=true;btn.textContent="Checking...";fetch("/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({existingUrl:eu})}).then(function(r){return r.json();}).then(function(d){if(d.error){alert(d.error);btn.disabled=false;btn.textContent="Restore";return;}_ru=d.manifestUrl;document.getElementById("refUrl").textContent=_ru;document.getElementById("refBox").style.display="block";document.getElementById("impToken").value=_ru;btn.disabled=false;btn.textContent="Restore Again";}).catch(function(e){alert("Error: "+e.message);btn.disabled=false;btn.textContent="Restore";});}';
   h += 'function copyRef(){if(!_ru)return;navigator.clipboard.writeText(_ru).then(function(){var b=document.getElementById("copyRefBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
@@ -512,50 +368,38 @@ function buildConfigPage(baseUrl) {
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
-app.get('/', (req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(buildConfigPage(getBaseUrl(req)));
-});
-
+app.get('/', (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.send(buildConfigPage(getBaseUrl(req))); });
 app.get('/health', (req, res) => res.json({ status: 'ok', version: '2.1.0', ts: Date.now() }));
 
 app.post('/generate', async (req, res) => {
-  const ip         = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
-  const piKey      = cleanText(req.body?.piKey    || '');
-  const piSec      = cleanText(req.body?.piSecret || '');
-  const taddyKey   = cleanText(req.body?.taddyKey   || '');
+  const ip          = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+  const piKey       = cleanText(req.body?.piKey       || '');
+  const piSec       = cleanText(req.body?.piSecret    || '');
+  const taddyKey    = cleanText(req.body?.taddyKey    || '');
   const taddyUserId = cleanText(req.body?.taddyUserId || '');
 
   let valid = false;
-  if (piKey && piSec)              valid = await piValidate(piKey, piSec);
+  if (piKey && piSec)               valid = await piValidate(piKey, piSec);
   else if (taddyKey && taddyUserId) valid = await taddyValidate(taddyKey, taddyUserId);
 
   if (!valid) return res.status(401).json({ error: 'Invalid credentials. Check your Podcast Index or Taddy API keys.' });
-
   const bucket = getOrCreateIpBucket(ip);
-  if (bucket.count >= MAX_TOKENS_PER_IP)
-    return res.status(429).json({ error: 'Too many tokens today from this IP.' });
+  if (bucket.count >= MAX_TOKENS_PER_IP) return res.status(429).json({ error: 'Too many tokens today from this IP.' });
 
   const token = generateToken();
-  const entry = {
-    createdAt: Date.now(), lastUsed: Date.now(), reqCount: 0, rateWin: [],
-    piKey, piSecret: piSec, taddyKey, taddyUserId
-  };
+  const entry = { createdAt: Date.now(), lastUsed: Date.now(), reqCount: 0, rateWin: [], piKey, piSecret: piSec, taddyKey, taddyUserId };
   TOKEN_CACHE.set(token, entry);
   await redisSave(token, entry);
   bucket.count++;
-
   res.json({ token, manifestUrl: getBaseUrl(req) + '/u/' + token + '/manifest.json' });
 });
 
 app.post('/refresh', async (req, res) => {
-  let raw   = String(req.body?.existingUrl || '').trim();
+  let raw = String(req.body?.existingUrl || '').trim();
   let token = raw;
-  const m   = raw.match(/\/u\/([a-f0-9]{28})\//);
+  const m = raw.match(/\/u\/([a-f0-9]{28})\//);
   if (m) token = m[1];
-  if (!token || !/^[a-f0-9]{28}$/.test(token))
-    return res.status(400).json({ error: 'Paste full addon URL.' });
-
+  if (!token || !/^[a-f0-9]{28}$/.test(token)) return res.status(400).json({ error: 'Paste full addon URL.' });
   const entry = await getTokenEntry(token);
   if (!entry) return res.status(404).json({ error: 'URL not found. Generate a new one.' });
   res.json({ token, manifestUrl: getBaseUrl(req) + '/u/' + token + '/manifest.json', refreshed: true });
@@ -563,15 +407,7 @@ app.post('/refresh', async (req, res) => {
 
 // ─── Manifest ─────────────────────────────────────────────────────────────
 app.get('/u/:token/manifest.json', tokenMiddleware, (req, res) => {
-  res.json({
-    id:          'com.eclipse.podcasts.' + req.params.token.slice(0, 8),
-    name:        'Podcasts (PI+Taddy)',
-    version:     '2.1.0',
-    description: '4M+ podcasts via Podcast Index + Taddy API.',
-    icon:        'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRm7Pco873CnlEKMoATgv0rNfOXQNdHg4strPErJftrlg&s=10',
-    resources:   ['search', 'stream', 'catalog'],
-    types:       ['track', 'album', 'artist', 'playlist']
-  });
+  res.json({ id: 'com.eclipse.podcasts.' + req.params.token.slice(0, 8), name: 'Podcasts (PI+Taddy)', version: '2.1.0', description: '4M+ podcasts via Podcast Index + Taddy API.', icon: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRm7Pco873CnlEKMoATgv0rNfOXQNdHg4strPErJftrlg&s=10', resources: ['search', 'stream', 'catalog'], types: ['track', 'album', 'artist', 'playlist'] });
 });
 
 // ─── Search ───────────────────────────────────────────────────────────────
@@ -583,7 +419,7 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
   try {
     const [piData, taddyData, itunesData] = await Promise.allSettled([
       entry.piKey ? piGet(entry, '/search/byterm', { q, max: 15 }) : Promise.resolve(null),
-      taddyQuery(entry, GQL_SEARCH, { term: q }),   // ← now uses GraphQL
+      taddyQuery(entry, GQL_SEARCH, { term: q }),
       itunesGet('/search', { term: q, media: 'podcast', entity: 'podcastEpisode', limit: 20, explicit: 'Yes' })
     ]);
 
@@ -592,48 +428,45 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
     const itunesResult = itunesData.status === 'fulfilled' ? itunesData.value : null;
 
     const piFeeds       = piResult?.feeds || [];
-    const taddyPodcasts = taddyResult?.searchForTerm?.podcastSeries || [];   // ← GQL path
+    const taddyPodcasts = taddyResult?.searchForTerm?.podcastSeries || [];
 
-    const itunesTracks = (itunesResult?.results || [])
-      .filter(ep => ep.kind === 'podcast-episode' && ep.episodeUrl)
-      .map(mapItunesEpisode);
-
-    const taddyTracks = taddyPodcasts.slice(0, 10).flatMap(pod =>
+    const itunesTracks = (itunesResult?.results || []).filter(ep => ep.kind === 'podcast-episode' && ep.episodeUrl).map(mapItunesEpisode);
+    const taddyTracks  = taddyPodcasts.slice(0, 10).flatMap(pod =>
       (pod.episodes || []).slice(0, 2).map(ep => {
-        // Attach podcast ref so mapTaddyEpisode can read pod name
         ep.podcastSeries = { name: pod.name, imageUrl: pod.imageUrl };
         return mapTaddyEpisode(ep, pod.name);
       })
     ).filter(t => t.streamURL);
 
-    const tracks  = [...itunesTracks, ...taddyTracks].slice(0, 25);
-    const albums  = [...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
+    const tracks = [...itunesTracks, ...taddyTracks].slice(0, 25);
+    const albums = [...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
 
+    // Artists: PI feeds + Taddy podcast authors
     const artistMap = new Map();
     piFeeds.forEach(f => {
       const key = cleanText(f.author || f.ownerName || '').toLowerCase();
       if (!key || artistMap.has(key)) return;
-      artistMap.set(key, {
-        id:         'pi_author_' + Buffer.from(cleanText(f.author || f.ownerName || '')).toString('base64url'),
-        name:       cleanText(f.author || f.ownerName || ''),
-        artworkURL: f.image || f.artwork || null,
-        genres:     f.categories ? Object.values(f.categories).slice(0, 2) : []
-      });
+      artistMap.set(key, { id: 'pi_author_' + Buffer.from(cleanText(f.author || f.ownerName || '')).toString('base64url'), name: cleanText(f.author || f.ownerName || ''), artworkURL: f.image || f.artwork || null, genres: f.categories ? Object.values(f.categories).slice(0, 2) : [] });
+    });
+    taddyPodcasts.forEach(pod => {
+      const name = cleanText(pod.authorName || pod.name || '');
+      const key  = name.toLowerCase();
+      if (!key || artistMap.has(key)) return;
+      artistMap.set(key, { id: 'taddy_author_' + String(pod.uuid), name, artworkURL: pod.imageUrl || null, genres: [] });
     });
     const artists = Array.from(artistMap.values()).slice(0, 6);
 
-    const playlists = piFeeds.filter(f => f.url).slice(0, 8).map(f => {
-      const feedId = 'rss_' + Buffer.from(f.url).toString('base64url');
-      FEED_URL_CACHE.set(feedId, f.url);
-      return {
-        id:          feedId,
-        title:       cleanText(f.title),
-        creator:     cleanText(f.author || f.ownerName || ''),
-        artworkURL:  f.image || f.artwork || null,
-        trackCount:  f.episodeCount || null,
-        description: cleanText(f.description || '').slice(0, 200)
-      };
-    });
+    // Playlists: PI RSS feeds + Taddy podcasts
+    const playlists = [
+      ...piFeeds.filter(f => f.url).slice(0, 5).map(f => {
+        const feedId = 'rss_' + Buffer.from(f.url).toString('base64url');
+        FEED_URL_CACHE.set(feedId, f.url);
+        return { id: feedId, title: cleanText(f.title), creator: cleanText(f.author || f.ownerName || ''), artworkURL: f.image || f.artwork || null, trackCount: f.episodeCount || null, description: cleanText(f.description || '').slice(0, 200) };
+      }),
+      ...taddyPodcasts.slice(0, 5).map(pod => ({
+        id: 'taddy_pl_' + String(pod.uuid), title: cleanText(pod.name), creator: cleanText(pod.authorName || ''), artworkURL: pod.imageUrl || null, trackCount: null, description: cleanText(pod.description || '').slice(0, 200)
+      }))
+    ].slice(0, 8);
 
     res.json({ tracks, albums, artists, playlists });
   } catch (e) {
@@ -658,12 +491,9 @@ app.get('/u/:token/stream/:id', tokenMiddleware, async (req, res) => {
   }
 
   if (id.startsWith('pi_ep_')) {
-    const epId = id.replace('pi_ep_', '');
+    const epId  = id.replace('pi_ep_', '');
     const data  = await piGet(entry, '/episodes/byid', { id: epId });
-    if (data?.episode?.enclosureUrl) {
-      const mapped = mapPiEpisode(data.episode, '');
-      return res.json({ url: mapped.streamURL, format: mapped.format });
-    }
+    if (data?.episode?.enclosureUrl) { const mapped = mapPiEpisode(data.episode, ''); return res.json({ url: mapped.streamURL, format: mapped.format }); }
   }
 
   if (id.startsWith('ep_')) {
@@ -680,43 +510,23 @@ app.get('/u/:token/stream/:id', tokenMiddleware, async (req, res) => {
 app.get('/u/:token/album/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
-
   try {
     if (rawId.startsWith('pi_')) {
       const feedId = rawId.replace('pi_', '');
-      const [feedData, epData] = await Promise.all([
-        piGet(entry, '/podcasts/byfeedid', { id: feedId }),
-        piGet(entry, '/episodes/byfeedid', { id: feedId, max: 200, fulltext: true })
-      ]);
+      const [feedData, epData] = await Promise.all([piGet(entry, '/podcasts/byfeedid', { id: feedId }), piGet(entry, '/episodes/byfeedid', { id: feedId, max: 200, fulltext: true })]);
       const feed   = feedData?.feed || {};
       const tracks = (epData?.items || []).map(ep => mapPiEpisode(ep, feed.title || ''));
-      return res.json({
-        id: rawId, title: cleanText(feed.title || ''), artist: cleanText(feed.author || feed.ownerName || ''),
-        artworkURL: feed.image || feed.artwork || null,
-        year: feed.newestItemPublishTime ? String(new Date(feed.newestItemPublishTime * 1000).getFullYear()) : null,
-        description: cleanText(feed.description || '').slice(0, 500),
-        trackCount: tracks.length, tracks
-      });
+      return res.json({ id: rawId, title: cleanText(feed.title || ''), artist: cleanText(feed.author || feed.ownerName || ''), artworkURL: feed.image || feed.artwork || null, year: feed.newestItemPublishTime ? String(new Date(feed.newestItemPublishTime * 1000).getFullYear()) : null, description: cleanText(feed.description || '').slice(0, 500), trackCount: tracks.length, tracks });
     }
-
     if (rawId.startsWith('taddy_')) {
       const podUuid = rawId.replace('taddy_', '');
       const data    = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
       const pod     = data?.getPodcastSeries || {};
       const tracks  = (pod.episodes || []).map(ep => mapTaddyEpisode(ep, pod.name || ''));
-      return res.json({
-        id: rawId, title: cleanText(pod.name || ''), artist: cleanText(pod.author || ''),
-        artworkURL: pod.imageUrl || null, year: null,
-        description: cleanText(pod.description || '').slice(0, 500),
-        trackCount: tracks.length, tracks
-      });
+      return res.json({ id: rawId, title: cleanText(pod.name || ''), artist: cleanText(pod.authorName || ''), artworkURL: pod.imageUrl || null, year: null, description: cleanText(pod.description || '').slice(0, 500), trackCount: tracks.length, tracks });
     }
-
     res.status(404).json({ error: 'Unknown album type.' });
-  } catch (e) {
-    console.error('[album]', e.message);
-    res.status(500).json({ error: 'Album fetch failed.' });
-  }
+  } catch (e) { console.error('[album]', e.message); res.status(500).json({ error: 'Album fetch failed.' }); }
 });
 
 // ─── Artist ───────────────────────────────────────────────────────────────
@@ -724,49 +534,50 @@ app.get('/u/:token/artist/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
   try {
+    // Taddy author
+    if (rawId.startsWith('taddy_author_')) {
+      const podUuid = rawId.replace('taddy_author_', '');
+      const data    = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
+      const pod     = data?.getPodcastSeries || {};
+      const topTracks = (pod.episodes || []).slice(0, 10).map(ep => mapTaddyEpisode(ep, pod.name || ''));
+      return res.json({ id: rawId, name: cleanText(pod.authorName || pod.name || ''), artworkURL: pod.imageUrl || null, bio: cleanText(pod.description || '').slice(0, 500) || null, genres: [], topTracks, albums: pod.uuid ? [mapTaddyPodcast(pod)] : [] });
+    }
+    // PI author
     const authorName = Buffer.from(rawId.replace('pi_author_', ''), 'base64url').toString('utf8');
     const data   = await piGet(entry, '/search/byterm', { q: authorName, max: 20 });
     const feeds  = data?.feeds || [];
     const exact  = feeds.filter(f => cleanText(f.author || '').toLowerCase() === authorName.toLowerCase());
     const matched = exact.length > 0 ? exact : feeds.slice(0, 10);
     const first  = matched[0] || {};
-
     let topTracks = [];
-    if (first.id) {
-      const epData = await piGet(entry, '/episodes/byfeedid', { id: first.id, max: 10 });
-      topTracks = (epData?.items || []).map(ep => mapPiEpisode(ep, first.title || ''));
-    }
-
-    res.json({
-      id: rawId, name: authorName,
-      artworkURL: first.image || first.artwork || null,
-      bio: null,
-      genres: first.categories ? Object.values(first.categories).slice(0, 2) : [],
-      topTracks,
-      albums: matched.map(mapPiFeed)
-    });
-  } catch (e) {
-    console.error('[artist]', e.message);
-    res.status(500).json({ error: 'Artist fetch failed.' });
-  }
+    if (first.id) { const epData = await piGet(entry, '/episodes/byfeedid', { id: first.id, max: 10 }); topTracks = (epData?.items || []).map(ep => mapPiEpisode(ep, first.title || '')); }
+    res.json({ id: rawId, name: authorName, artworkURL: first.image || first.artwork || null, bio: null, genres: first.categories ? Object.values(first.categories).slice(0, 2) : [], topTracks, albums: matched.map(mapPiFeed) });
+  } catch (e) { console.error('[artist]', e.message); res.status(500).json({ error: 'Artist fetch failed.' }); }
 });
 
 // ─── Playlist ─────────────────────────────────────────────────────────────
 app.get('/u/:token/playlist/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
-  if (!rawId.startsWith('rss_')) return res.status(404).json({ error: 'Playlist not found.' });
+  const entry = req.tokenEntry;
 
-  let feedUrl = FEED_URL_CACHE.get(rawId) || null;
-  if (!feedUrl) {
-    try { feedUrl = Buffer.from(rawId.slice(4), 'base64url').toString('utf8'); }
-    catch (e) { return res.status(400).json({ error: 'Invalid playlist ID.' }); }
+  // Taddy podcast as playlist
+  if (rawId.startsWith('taddy_pl_')) {
+    const podUuid = rawId.replace('taddy_pl_', '');
+    const data    = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
+    const pod     = data?.getPodcastSeries || {};
+    if (!pod.uuid) return res.status(404).json({ error: 'Taddy podcast not found.' });
+    const tracks = (pod.episodes || []).map(ep => mapTaddyEpisode(ep, pod.name || ''));
+    return res.json({ id: rawId, title: cleanText(pod.name || ''), description: cleanText(pod.description || '').slice(0, 300), artworkURL: pod.imageUrl || null, creator: cleanText(pod.authorName || ''), tracks });
   }
 
+  // PI RSS feed as playlist
+  if (!rawId.startsWith('rss_')) return res.status(404).json({ error: 'Playlist not found.' });
+  let feedUrl = FEED_URL_CACHE.get(rawId) || null;
+  if (!feedUrl) { try { feedUrl = Buffer.from(rawId.slice(4), 'base64url').toString('utf8'); } catch (e) { return res.status(400).json({ error: 'Invalid playlist ID.' }); } }
   const xml = await fetchRss(feedUrl);
   if (!xml) return res.status(404).json({ error: 'Could not fetch RSS feed.' });
   const show = parseRssToShow(xml);
   if (!show) return res.status(500).json({ error: 'Could not parse RSS feed.' });
-
   res.json({ id: rawId, title: show.title, description: show.description, artworkURL: show.artworkURL, creator: show.artist, tracks: show.tracks });
 });
 
@@ -781,36 +592,18 @@ app.get('/u/:token/import', tokenMiddleware, async (req, res) => {
     const podId = appleMatch[1];
     const data  = await itunesGet('/lookup', { id: podId, entity: 'podcastEpisode', limit: 300 });
     if (!data?.results?.length) return res.status(404).json({ error: 'Podcast not found on iTunes.' });
-
     const show     = data.results.find(r => r.wrapperType === 'collection') || data.results[0];
-    const episodes = data.results
-      .filter(r => r.kind === 'podcast-episode' && r.episodeUrl)
-      .map(mapItunesEpisode);
-
+    const episodes = data.results.filter(r => r.kind === 'podcast-episode' && r.episodeUrl).map(mapItunesEpisode);
     if (!episodes.length) return res.status(404).json({ error: 'No playable episodes found.' });
-
-    return res.json({
-      title:      cleanText(show.collectionName || show.trackName || ''),
-      artist:     cleanText(show.artistName || ''),
-      artworkURL: artworkHd(show.artworkUrl600 || show.artworkUrl100 || ''),
-      trackCount: episodes.length,
-      tracks:     episodes
-    });
+    return res.json({ title: cleanText(show.collectionName || show.trackName || ''), artist: cleanText(show.artistName || ''), artworkURL: artworkHd(show.artworkUrl600 || show.artworkUrl100 || ''), trackCount: episodes.length, tracks: episodes });
   }
 
-  // Treat as RSS feed URL directly
+  // Direct RSS feed URL
   const xml = await fetchRss(inputUrl);
   if (!xml) return res.status(404).json({ error: 'Could not fetch RSS feed. Check the URL.' });
   const show = parseRssToShow(xml);
   if (!show || !show.tracks.length) return res.status(404).json({ error: 'No episodes found in RSS feed.' });
-
-  res.json({
-    title:      show.title,
-    artist:     show.artist,
-    artworkURL: show.artworkURL,
-    trackCount: show.tracks.length,
-    tracks:     show.tracks
-  });
+  res.json({ title: show.title, artist: show.artist, artworkURL: show.artworkURL, trackCount: show.tracks.length, tracks: show.tracks });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────
