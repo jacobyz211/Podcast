@@ -82,7 +82,8 @@ async function tokenMiddleware(req, res, next) {
     return res.status(403).json({ error: 'No credentials found. Generate a new URL with Podcast Index key/secret OR Taddy API key + User ID.' });
   }
   req.tokenEntry = entry;
-  if (entry.reqCount % 20 === 0) redisSave(req.params.token, entry);
+  // Save on first request and every 20 thereafter
+  if (entry.reqCount === 1 || entry.reqCount % 20 === 0) redisSave(req.params.token, entry);
   next();
 }
 
@@ -201,7 +202,6 @@ function mapPiFeed(f) {
 }
 
 function mapTaddyPodcast(pod) {
-  // Taddy schema uses authorName (not author) per their dataset export
   return { id: 'taddy_' + String(pod.uuid), title: cleanText(pod.name), artist: cleanText(pod.authorName || ''), artworkURL: pod.imageUrl || null, trackCount: null, year: null };
 }
 
@@ -350,7 +350,7 @@ function buildConfigPage(baseUrl) {
   h += '<button class="bg" id="impBtn" onclick="doImport()">Fetch & Download CSV</button>';
   h += '<div class="status" id="impStatus"></div><div class="preview" id="impPreview"></div></div>';
 
-  h += '<footer>Eclipse Podcast Addon v2.1.0 • Podcast Index + Taddy API • <a href="' + baseUrl + '/health">' + baseUrl + '</a></footer>';
+  h += '<footer>Eclipse Podcast Addon v2.1.0 • Podcast Index + Taddy API • <a href="' + baseUrl + '/health">' + baseUrl + '/health</a></footer>';
 
   h += '<script>';
   h += 'var _gu="",_ru="";';
@@ -441,7 +441,6 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
     const tracks = [...itunesTracks, ...taddyTracks].slice(0, 25);
     const albums = [...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
 
-    // Artists: PI feeds + Taddy podcast authors
     const artistMap = new Map();
     piFeeds.forEach(f => {
       const key = cleanText(f.author || f.ownerName || '').toLowerCase();
@@ -456,7 +455,6 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
     });
     const artists = Array.from(artistMap.values()).slice(0, 6);
 
-    // Playlists: PI RSS feeds + Taddy podcasts
     const playlists = [
       ...piFeeds.filter(f => f.url).slice(0, 5).map(f => {
         const feedId = 'rss_' + Buffer.from(f.url).toString('base64url');
@@ -491,8 +489,8 @@ app.get('/u/:token/stream/:id', tokenMiddleware, async (req, res) => {
   }
 
   if (id.startsWith('pi_ep_')) {
-    const epId  = id.replace('pi_ep_', '');
-    const data  = await piGet(entry, '/episodes/byid', { id: epId });
+    const epId = id.replace('pi_ep_', '');
+    const data = await piGet(entry, '/episodes/byid', { id: epId });
     if (data?.episode?.enclosureUrl) { const mapped = mapPiEpisode(data.episode, ''); return res.json({ url: mapped.streamURL, format: mapped.format }); }
   }
 
@@ -534,21 +532,19 @@ app.get('/u/:token/artist/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
   try {
-    // Taddy author
     if (rawId.startsWith('taddy_author_')) {
-      const podUuid = rawId.replace('taddy_author_', '');
-      const data    = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
-      const pod     = data?.getPodcastSeries || {};
+      const podUuid   = rawId.replace('taddy_author_', '');
+      const data      = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
+      const pod       = data?.getPodcastSeries || {};
       const topTracks = (pod.episodes || []).slice(0, 10).map(ep => mapTaddyEpisode(ep, pod.name || ''));
       return res.json({ id: rawId, name: cleanText(pod.authorName || pod.name || ''), artworkURL: pod.imageUrl || null, bio: cleanText(pod.description || '').slice(0, 500) || null, genres: [], topTracks, albums: pod.uuid ? [mapTaddyPodcast(pod)] : [] });
     }
-    // PI author
     const authorName = Buffer.from(rawId.replace('pi_author_', ''), 'base64url').toString('utf8');
-    const data   = await piGet(entry, '/search/byterm', { q: authorName, max: 20 });
-    const feeds  = data?.feeds || [];
-    const exact  = feeds.filter(f => cleanText(f.author || '').toLowerCase() === authorName.toLowerCase());
+    const data    = await piGet(entry, '/search/byterm', { q: authorName, max: 20 });
+    const feeds   = data?.feeds || [];
+    const exact   = feeds.filter(f => cleanText(f.author || '').toLowerCase() === authorName.toLowerCase());
     const matched = exact.length > 0 ? exact : feeds.slice(0, 10);
-    const first  = matched[0] || {};
+    const first   = matched[0] || {};
     let topTracks = [];
     if (first.id) { const epData = await piGet(entry, '/episodes/byfeedid', { id: first.id, max: 10 }); topTracks = (epData?.items || []).map(ep => mapPiEpisode(ep, first.title || '')); }
     res.json({ id: rawId, name: authorName, artworkURL: first.image || first.artwork || null, bio: null, genres: first.categories ? Object.values(first.categories).slice(0, 2) : [], topTracks, albums: matched.map(mapPiFeed) });
@@ -560,7 +556,6 @@ app.get('/u/:token/playlist/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
 
-  // Taddy podcast as playlist
   if (rawId.startsWith('taddy_pl_')) {
     const podUuid = rawId.replace('taddy_pl_', '');
     const data    = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
@@ -570,7 +565,6 @@ app.get('/u/:token/playlist/:id', tokenMiddleware, async (req, res) => {
     return res.json({ id: rawId, title: cleanText(pod.name || ''), description: cleanText(pod.description || '').slice(0, 300), artworkURL: pod.imageUrl || null, creator: cleanText(pod.authorName || ''), tracks });
   }
 
-  // PI RSS feed as playlist
   if (!rawId.startsWith('rss_')) return res.status(404).json({ error: 'Playlist not found.' });
   let feedUrl = FEED_URL_CACHE.get(rawId) || null;
   if (!feedUrl) { try { feedUrl = Buffer.from(rawId.slice(4), 'base64url').toString('utf8'); } catch (e) { return res.status(400).json({ error: 'Invalid playlist ID.' }); } }
@@ -586,25 +580,37 @@ app.get('/u/:token/import', tokenMiddleware, async (req, res) => {
   const inputUrl = cleanText(req.query.url);
   if (!inputUrl) return res.status(400).json({ error: 'Pass ?url= with a podcast or RSS URL.' });
 
-  // Apple Podcasts URL → iTunes lookup
-  const appleMatch = inputUrl.match(/\/id(\d{6,12})/);
+  // Apple Podcasts URL → resolve feedUrl via iTunes lookup
+  const appleMatch = inputUrl.match(/\/id(\d+)/);
   if (appleMatch) {
-    const podId = appleMatch[1];
-    const data  = await itunesGet('/lookup', { id: podId, entity: 'podcastEpisode', limit: 300 });
-    if (!data?.results?.length) return res.status(404).json({ error: 'Podcast not found on iTunes.' });
-    const show     = data.results.find(r => r.wrapperType === 'collection') || data.results[0];
-    const episodes = data.results.filter(r => r.kind === 'podcast-episode' && r.episodeUrl).map(mapItunesEpisode);
-    if (!episodes.length) return res.status(404).json({ error: 'No playable episodes found.' });
-    return res.json({ title: cleanText(show.collectionName || show.trackName || ''), artist: cleanText(show.artistName || ''), artworkURL: artworkHd(show.artworkUrl600 || show.artworkUrl100 || ''), trackCount: episodes.length, tracks: episodes });
+    try {
+      const podcastId = appleMatch[1];
+      const data      = await itunesGet('/lookup', { id: podcastId, entity: 'podcast' });
+      const result    = (data?.results || []).find(r => r.feedUrl);
+      if (!result?.feedUrl) return res.status(404).json({ error: 'Could not find RSS feed for this Apple Podcasts URL.' });
+      const xml  = await fetchRss(result.feedUrl);
+      if (!xml)  return res.status(404).json({ error: 'Could not fetch RSS feed.' });
+      const show = parseRssToShow(xml);
+      if (!show) return res.status(500).json({ error: 'Could not parse RSS feed.' });
+      return res.json({ title: show.title, artist: show.artist, artworkURL: show.artworkURL, description: show.description, tracks: show.tracks });
+    } catch (e) {
+      console.error('[import/apple]', e.message);
+      return res.status(500).json({ error: 'Failed to resolve Apple Podcasts URL.' });
+    }
   }
 
-  // Direct RSS feed URL
-  const xml = await fetchRss(inputUrl);
-  if (!xml) return res.status(404).json({ error: 'Could not fetch RSS feed. Check the URL.' });
-  const show = parseRssToShow(xml);
-  if (!show || !show.tracks.length) return res.status(404).json({ error: 'No episodes found in RSS feed.' });
-  res.json({ title: show.title, artist: show.artist, artworkURL: show.artworkURL, trackCount: show.tracks.length, tracks: show.tracks });
+  // Direct RSS URL
+  try {
+    const xml  = await fetchRss(inputUrl);
+    if (!xml)  return res.status(404).json({ error: 'Could not fetch RSS feed from that URL.' });
+    const show = parseRssToShow(xml);
+    if (!show) return res.status(500).json({ error: 'Could not parse RSS feed.' });
+    res.json({ title: show.title, artist: show.artist, artworkURL: show.artworkURL, description: show.description, tracks: show.tracks });
+  } catch (e) {
+    console.error('[import/rss]', e.message);
+    res.status(500).json({ error: 'Failed to fetch or parse RSS feed.' });
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log('[Server] Listening on port', PORT));
+app.listen(PORT, () => console.log('[Server] Eclipse Podcast Addon v2.1.0 on port ' + PORT));
