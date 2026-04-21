@@ -100,7 +100,7 @@ function cacheEpisode(ep) { if (ep && ep.id) EPISODE_CACHE.set(String(ep.id), ep
 function piHeaders(entry) {
   const unixTime = Math.floor(Date.now() / 1000);
   const hash     = crypto.createHash('sha1').update(entry.piKey + entry.piSecret + String(unixTime)).digest('hex');
-  return { 'X-Auth-Key': entry.piKey, 'X-Auth-Date': String(unixTime), 'Authorization': hash, 'User-Agent': 'EclipsePodcastAddon/2.2' };
+  return { 'X-Auth-Key': entry.piKey, 'X-Auth-Date': String(unixTime), 'Authorization': hash, 'User-Agent': 'EclipsePodcastAddon/2.1' };
 }
 
 async function piGet(entry, endpoint, params) {
@@ -120,7 +120,7 @@ async function taddyQuery(entry, query, variables = {}) {
   if (!entry.taddyKey || !entry.taddyUserId) return null;
   try {
     const r = await axios.post('https://api.taddy.org', { query, variables }, {
-      headers: { 'Content-Type': 'application/json', 'X-USER-ID': String(entry.taddyUserId), 'X-API-KEY': entry.taddyKey, 'User-Agent': 'EclipsePodcastAddon/2.2' },
+      headers: { 'Content-Type': 'application/json', 'X-USER-ID': String(entry.taddyUserId), 'X-API-KEY': entry.taddyKey, 'User-Agent': 'EclipsePodcastAddon/2.1' },
       timeout: 12000
     });
     return r.data?.data || null;
@@ -264,791 +264,112 @@ function parseRssToShow(xml) {
 
 // ─── Config page ──────────────────────────────────────────────────────────
 function buildConfigPage(baseUrl) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Eclipse Podcasts</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0b1020;
-      --surface: rgba(15, 23, 42, 0.78);
-      --surface-2: rgba(15, 23, 42, 0.96);
-      --line: rgba(148, 163, 184, 0.18);
-      --line-strong: rgba(96, 165, 250, 0.34);
-      --text: #e5eefc;
-      --muted: #9aa9c2;
-      --soft: #6f7f99;
-      --primary: #60a5fa;
-      --primary-2: #3b82f6;
-      --success: #22c55e;
-      --danger: #f87171;
-      --warning: #fbbf24;
-      --shadow: 0 30px 80px rgba(2, 6, 23, 0.45);
-      --radius: 24px;
-      --radius-sm: 16px;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 32%),
-        radial-gradient(circle at top right, rgba(34,197,94,0.14), transparent 28%),
-        linear-gradient(180deg, #08101e 0%, #0b1020 45%, #0a0f1a 100%);
-      color: var(--text);
-      min-height: 100vh;
-    }
-    a { color: var(--primary); text-decoration: none; }
-    a:hover { color: #93c5fd; }
-    .page {
-      width: min(1180px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 28px 0 56px;
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      min-width: 0;
-    }
-    .brand-mark {
-      width: 44px;
-      height: 44px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(96,165,250,0.28), rgba(59,130,246,0.72));
-      border: 1px solid rgba(147,197,253,0.35);
-      display: grid;
-      place-items: center;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
-      flex: 0 0 auto;
-    }
-    .brand-copy strong {
-      display: block;
-      font-size: 14px;
-      letter-spacing: 0.02em;
-    }
-    .brand-copy span {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      margin-top: 2px;
-    }
-    .top-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .mini-link {
-      color: var(--muted);
-      font-size: 13px;
-      padding: 10px 14px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255,255,255,0.02);
-    }
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-      gap: 20px;
-      align-items: stretch;
-      margin-bottom: 20px;
-    }
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
-    }
-    .hero-main {
-      padding: 32px;
-      position: relative;
-      overflow: hidden;
-    }
-    .hero-main:before {
-      content: '';
-      position: absolute;
-      inset: auto -80px -100px auto;
-      width: 240px;
-      height: 240px;
-      border-radius: 999px;
-      background: radial-gradient(circle, rgba(96,165,250,0.18), transparent 65%);
-      pointer-events: none;
-    }
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: #bfdbfe;
-      background: rgba(59,130,246,0.12);
-      border: 1px solid rgba(96,165,250,0.22);
-      margin-bottom: 18px;
-    }
-    h1 {
-      font-size: clamp(34px, 5vw, 56px);
-      line-height: 1.02;
-      letter-spacing: -0.04em;
-      margin: 0 0 14px;
-      max-width: 11ch;
-    }
-    .hero-main p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.7;
-      max-width: 64ch;
-    }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 26px;
-    }
-    .stat {
-      padding: 16px 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.035);
-      border: 1px solid rgba(148,163,184,0.12);
-    }
-    .stat strong {
-      display: block;
-      font-size: 22px;
-      margin-bottom: 4px;
-    }
-    .stat span {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .hero-side {
-      padding: 26px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 20px;
-    }
-    .hero-side h2 {
-      margin: 0;
-      font-size: 18px;
-    }
-    .doc-list {
-      display: grid;
-      gap: 12px;
-    }
-    .doc-item {
-      padding: 14px 15px;
-      border-radius: 16px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(148,163,184,0.11);
-    }
-    .doc-item strong {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-    .doc-item span {
-      display: block;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
-    }
-    .capabilities {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .capabilities span {
-      padding: 8px 11px;
-      border-radius: 999px;
-      font-size: 12px;
-      color: #dbeafe;
-      background: rgba(59,130,246,0.1);
-      border: 1px solid rgba(96,165,250,0.2);
-    }
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-      gap: 20px;
-      align-items: start;
-    }
-    .stack { display: grid; gap: 20px; }
-    .card {
-      padding: 28px;
-    }
-    .card h3 {
-      margin: 0 0 8px;
-      font-size: 22px;
-      letter-spacing: -0.02em;
-    }
-    .sub {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.7;
-      margin: 0 0 22px;
-    }
-    .section-label {
-      display: block;
-      margin-bottom: 10px;
-      color: var(--soft);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .field { display: grid; gap: 8px; }
-    label {
-      font-size: 13px;
-      color: #d8e4f8;
-      font-weight: 600;
-    }
-    input {
-      width: 100%;
-      border: 1px solid rgba(148,163,184,0.18);
-      background: rgba(2,6,23,0.42);
-      color: var(--text);
-      border-radius: 14px;
-      padding: 14px 15px;
-      outline: none;
-      font-size: 14px;
-      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
-    }
-    input::placeholder { color: #5f6f88; }
-    input:focus {
-      border-color: rgba(96,165,250,0.72);
-      box-shadow: 0 0 0 4px rgba(59,130,246,0.14);
-    }
-    .hint {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.7;
-      margin-top: 2px;
-    }
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
-    button {
-      border: 0;
-      cursor: pointer;
-      border-radius: 14px;
-      font-weight: 700;
-      font-size: 14px;
-      padding: 14px 16px;
-      transition: transform .16s ease, background .16s ease, opacity .16s ease, border-color .16s ease;
-    }
-    button:hover { transform: translateY(-1px); }
-    button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      color: white;
-      flex: 1 1 220px;
-    }
-    .btn-secondary {
-      background: rgba(255,255,255,0.03);
-      color: var(--text);
-      border: 1px solid rgba(148,163,184,0.18);
-      flex: 1 1 180px;
-    }
-    .btn-ghost {
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid rgba(148,163,184,0.14);
-      width: 100%;
-    }
-    .status {
-      min-height: 20px;
-      margin-top: 14px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .status.ok { color: #86efac; }
-    .status.err { color: #fca5a5; }
-    .status.spin { color: #93c5fd; }
-    .result-box {
-      display: none;
-      margin-top: 18px;
-      padding: 18px;
-      border-radius: 18px;
-      background: rgba(2,6,23,0.34);
-      border: 1px solid rgba(96,165,250,0.18);
-    }
-    .result-box small {
-      display: block;
-      color: var(--soft);
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin-bottom: 10px;
-    }
-    .url-box {
-      color: #bfdbfe;
-      word-break: break-all;
-      line-height: 1.65;
-      font-size: 13px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      margin-bottom: 14px;
-    }
-    .split-note {
-      display: grid;
-      gap: 12px;
-    }
-    .bullet {
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(148,163,184,0.11);
-    }
-    .bullet strong {
-      display: block;
-      font-size: 14px;
-      margin-bottom: 5px;
-    }
-    .bullet span {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .preview {
-      display: none;
-      margin-top: 16px;
-      border-radius: 18px;
-      border: 1px solid rgba(148,163,184,0.12);
-      background: rgba(2,6,23,0.32);
-      max-height: 260px;
-      overflow: auto;
-      padding: 8px 14px;
-    }
-    .tr {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 11px 0;
-      border-bottom: 1px solid rgba(148,163,184,0.08);
-      font-size: 13px;
-    }
-    .tr:last-child { border-bottom: 0; }
-    .tn {
-      width: 26px;
-      color: var(--soft);
-      text-align: right;
-      flex: 0 0 auto;
-      font-variant-numeric: tabular-nums;
-    }
-    .ti { min-width: 0; flex: 1; }
-    .tt {
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 3px;
-    }
-    .ta {
-      color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .foot {
-      margin-top: 18px;
-      padding-top: 18px;
-      border-top: 1px solid rgba(148,163,184,0.12);
-      color: var(--soft);
-      font-size: 12px;
-      line-height: 1.8;
-    }
-    @media (max-width: 980px) {
-      .hero, .layout { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 720px) {
-      .page { width: min(100% - 20px, 100%); padding-top: 18px; }
-      .topbar { align-items: flex-start; flex-direction: column; }
-      .hero-main, .hero-side, .card { padding: 22px; }
-      .hero-grid, .grid-2 { grid-template-columns: 1fr; }
-      h1 { max-width: none; }
-      .btn-row { flex-direction: column; }
-      .top-actions { width: 100%; justify-content: flex-start; }
-      .mini-link { width: 100%; text-align: center; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <rect x="9" y="3" width="6" height="10" rx="3" fill="currentColor" style="color:#dbeafe"></rect>
-            <path d="M5 12.5C5 16.366 8.134 19.5 12 19.5C15.866 19.5 19 16.366 19 12.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:#bfdbfe"></path>
-            <path d="M12 19.5V22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="color:#bfdbfe"></path>
-          </svg>
-        </div>
-        <div class="brand-copy">
-          <strong>Eclipse Podcasts</strong>
-          <span>Docs-aligned addon setup for Eclipse Music</span>
-        </div>
-      </div>
-      <div class="top-actions">
-        <a class="mini-link" href="${baseUrl}/health" target="_blank" rel="noopener noreferrer">Health check</a>
-        <a class="mini-link" href="https://api.podcastindex.org" target="_blank" rel="noopener noreferrer">Podcast Index</a>
-        <a class="mini-link" href="https://taddy.org" target="_blank" rel="noopener noreferrer">Taddy</a>
-      </div>
-    </div>
+  let h = '';
+  h += '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">';
+  h += '<meta name="viewport" content="width=device-width,initial-scale=1">';
+  h += '<title>Eclipse – Podcast Addon</title>';
+  h += '<style>*{box-sizing:border-box;margin:0;padding:0}';
+  h += 'body{background:#0c0c0f;color:#e8e8e8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:48px 20px 64px}';
+  h += '.logo{margin-bottom:20px}';
+  h += '.card{background:#131316;border:1px solid #1f1f26;border-radius:18px;padding:36px;max-width:540px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.55);margin-bottom:20px}';
+  h += 'h1{font-size:22px;font-weight:700;margin-bottom:6px;color:#fff}h2{font-size:16px;font-weight:700;margin-bottom:14px;color:#fff}';
+  h += 'p.sub{font-size:14px;color:#777;margin-bottom:20px;line-height:1.6}';
+  h += '.pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}';
+  h += '.pill{border-radius:20px;font-size:11px;font-weight:600;padding:4px 10px;background:#0d1a2a;color:#4a9eff;border:1px solid #1a3a5e}';
+  h += '.pill.g{background:#0d1f0d;color:#6db86d;border-color:#2d422a}';
+  h += '.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:8px;margin-top:16px}';
+  h += 'input{width:100%;background:#0c0c0f;border:1px solid #222;border-radius:10px;color:#e8e8e8;font-size:14px;padding:12px 14px;margin-bottom:6px;outline:none;transition:border-color .15s;font-family:ui-monospace,monospace}';
+  h += 'input:focus{border-color:#4a9eff}input::placeholder{color:#333;font-family:-apple-system,sans-serif}';
+  h += '.hint{font-size:12px;color:#484848;margin-bottom:12px;line-height:1.7}.hint a{color:#4a9eff;text-decoration:none}';
+  h += 'button{cursor:pointer;border:none;border-radius:10px;font-size:15px;font-weight:700;padding:13px;width:100%;margin-top:6px;margin-bottom:12px;transition:background .15s}';
+  h += '.bo{background:#4a9eff;color:#fff}.bo:hover{background:#2a7fdf}.bo:disabled{background:#252525;color:#444;cursor:not-allowed}';
+  h += '.bg{background:#1a4a20;color:#e8e8e8;border:1px solid #2a6a30}.bg:hover{background:#245c2a}.bg:disabled{background:#252525;color:#444;cursor:not-allowed}';
+  h += '.bd{background:#1a1a1a;color:#aaa;border:1px solid #222;font-size:13px;padding:10px}.bd:hover{background:#222;color:#fff}';
+  h += '.box{display:none;background:#0c0c0f;border:1px solid #1e1e2e;border-radius:12px;padding:18px;margin-bottom:14px}';
+  h += '.blbl{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}';
+  h += '.burl{font-size:12px;color:#4a9eff;word-break:break-all;font-family:"SF Mono",monospace;margin-bottom:14px;line-height:1.5}';
+  h += 'hr{border:none;border-top:1px solid #1a1a1a;margin:24px 0}';
+  h += '.steps{display:flex;flex-direction:column;gap:12px}.step{display:flex;gap:12px;align-items:flex-start}';
+  h += '.sn{background:#1a1a1a;border:1px solid #252525;border-radius:50%;width:26px;height:26px;min-width:26px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#666}';
+  h += '.st{font-size:13px;color:#666;line-height:1.6}.st b{color:#aaa}';
+  h += '.warn{background:#14100a;border:1px solid #2e2000;border-radius:10px;padding:14px;margin-top:20px;font-size:12px;color:#8a6a30;line-height:1.7}';
+  h += '.badge{display:inline-block;background:#0d1a2a;color:#4a9eff;border:1px solid #1a3a5e;border-radius:20px;font-size:11px;font-weight:600;padding:3px 10px;margin-bottom:14px}';
+  h += '.status{font-size:13px;color:#666;margin:8px 0;min-height:18px}.status.ok{color:#5a9e5a}.status.err{color:#c0392b}.status.spin{color:#4a9eff}';
+  h += '.kstep{background:#0a0e16;border:1px solid #1a2a3e;border-radius:12px;padding:16px;margin-bottom:12px}';
+  h += '.kstep-title{font-size:12px;font-weight:700;color:#4a9eff;margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}';
+  h += '.kstep p{font-size:13px;color:#667;line-height:1.7}.kstep a{color:#4a9eff;text-decoration:none;font-weight:600}';
+  h += '.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}';
+  h += '.preview{background:#0c0c0f;border:1px solid #1a1a1a;border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;margin-bottom:12px;display:none}';
+  h += '.tr{display:flex;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #181818;font-size:13px}.tr:last-child{border-bottom:none}';
+  h += '.tn{color:#444;font-size:11px;min-width:22px;text-align:right}.ti{flex:1;min-width:0}';
+  h += '.tt{color:#e8e8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ta{color:#666;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}';
+  h += 'footer{margin-top:32px;font-size:12px;color:#333;text-align:center;line-height:1.8}';
+  h += '</style></head><body>';
 
-    <section class="hero">
-      <div class="panel hero-main">
-        <div class="eyebrow">Addon Developer Guide</div>
-        <h1>Install a podcast addon with the right Eclipse player UI.</h1>
-        <p>This server exposes the Eclipse addon endpoints and now advertises <strong>contentType: podcast</strong>, so Eclipse switches to the podcast player mode with skip controls, speed, and sleep timer. Generate a tokenized manifest URL below, then paste it into Eclipse Music.</p>
-        <div class="hero-grid">
-          <div class="stat"><strong>/manifest.json</strong><span>Includes search, stream, catalog, and podcast content mode.</span></div>
-          <div class="stat"><strong>/search + /stream</strong><span>Required addon endpoints already wired for Podcast Index, Taddy, RSS, and iTunes episodes.</span></div>
-          <div class="stat"><strong>/album /artist /playlist</strong><span>Catalog browsing works natively inside Eclipse when those IDs are tapped.</span></div>
-          <div class="stat"><strong>Tokenized URLs</strong><span>User credentials stay inside the addon URL, matching the Eclipse addon flow.</span></div>
-        </div>
-      </div>
+  h += '<svg class="logo" width="52" height="52" viewBox="0 0 52 52" fill="none">';
+  h += '<circle cx="26" cy="26" r="26" fill="#1a3a5e"/>';
+  h += '<rect x="20" y="10" width="12" height="22" rx="6" fill="#4a9eff"/>';
+  h += '<path d="M14 28c0 6.627 5.373 12 12 12s12-5.373 12-12" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round" fill="none"/>';
+  h += '<line x1="26" y1="40" x2="26" y2="45" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>';
+  h += '<line x1="20" y1="45" x2="32" y2="45" stroke="#4a9eff" stroke-width="2.5" stroke-linecap="round"/>';
+  h += '</svg>';
 
-      <aside class="panel hero-side">
-        <div>
-          <h2>What Eclipse expects</h2>
-          <div class="doc-list" style="margin-top:14px;">
-            <div class="doc-item"><strong>Required</strong><span>Manifest, search, and stream endpoints.</span></div>
-            <div class="doc-item"><strong>Optional catalog</strong><span>Album, artist, and playlist detail endpoints for native browsing.</span></div>
-            <div class="doc-item"><strong>Podcast mode</strong><span>Set in the manifest so Eclipse uses the podcast playback UI automatically.</span></div>
-          </div>
-        </div>
-        <div>
-          <h2 style="margin-bottom:12px;">Capabilities</h2>
-          <div class="capabilities">
-            <span>search</span>
-            <span>stream</span>
-            <span>catalog</span>
-            <span>track</span>
-            <span>album</span>
-            <span>artist</span>
-            <span>playlist</span>
-            <span>contentType: podcast</span>
-          </div>
-        </div>
-      </aside>
-    </section>
+  h += '<div class="card">';
+  h += '<h1>Podcasts for Eclipse</h1>';
+  h += '<p class="sub">Choose Podcast Index (free) OR Taddy API. Both unlock 4M+ podcasts. Eclipse will use the podcast player UI automatically via the addon manifest.</p>';
+  h += '<div class="pills"><span class="pill">Episodes & shows</span><span class="pill">Creator pages</span><span class="pill">Playlists</span><span class="pill g">Podcast UI</span><span class="pill g">Offline download</span></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 1 — Choose your API</div>';
+  h += '<p><b>Podcast Index (Free):</b> Go to <a href="https://api.podcastindex.org" target="_blank">api.podcastindex.org</a>, create account, copy API Key + Secret.</p>';
+  h += '<p><b>Taddy API:</b> Get API Key + User ID from <a href="https://taddy.org" target="_blank">taddy.org</a> dashboard.</p></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 2 — Enter credentials</div>';
+  h += '<div class="row2"><div><div class="lbl">Podcast Index Key</div><input type="text" id="piKey" placeholder="ZQEW8D5ET2L6..."></div>';
+  h += '<div><div class="lbl">Podcast Index Secret</div><input type="password" id="piSecret" placeholder="Your secret..."></div></div>';
+  h += '<div class="row2"><div><div class="lbl">Taddy API Key</div><input type="text" id="taddyKey" placeholder="taddy_xxxxx..."></div>';
+  h += '<div><div class="lbl">Taddy User ID</div><input type="text" id="taddyUserId" placeholder="123456"></div></div>';
+  h += '<div class="hint">Enter <b>either</b> Podcast Index Key+Secret <b>or</b> Taddy Key+User ID.</div>';
+  h += '<div class="status" id="credStatus"></div></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 3 — Generate addon URL</div>';
+  h += '<button class="bo" id="genBtn" onclick="generate()" disabled>Enter API credentials first</button>';
+  h += '<div class="box" id="genBox"><div class="blbl">Your addon URL — paste into Eclipse</div><div class="burl" id="genUrl"></div><button class="bd" id="copyGenBtn" onclick="copyGen()">Copy URL</button></div></div>';
+  h += '<hr>';
+  h += '<div class="lbl">Restore existing URL</div>';
+  h += '<input type="text" id="existingUrl" placeholder="Paste your existing addon URL here">';
+  h += '<button class="bg" id="refBtn" onclick="doRefresh()">Restore Existing URL</button>';
+  h += '<div class="box" id="refBox"><div class="blbl">Restored — same URL, still works</div><div class="burl" id="refUrl"></div><button class="bd" id="copyRefBtn" onclick="copyRef()">Copy URL</button></div>';
+  h += '<hr><div class="steps">';
+  h += '<div class="step"><div class="sn">4</div><div class="st">Copy URL above</div></div>';
+  h += '<div class="step"><div class="sn">5</div><div class="st">Eclipse → Settings → Connections → Addon</div></div>';
+  h += '<div class="step"><div class="sn">6</div><div class="st">Paste URL → Install</div></div></div>';
+  h += '<div class="warn">Manifest now declares <b>contentType: podcast</b>, so Eclipse uses podcast controls like skip buttons, speed control, and sleep timer. Credentials survive restarts via Redis. Only reinstall if domain changes.</div></div>';
 
-    <section class="layout">
-      <div class="stack">
-        <div class="panel card">
-          <span class="section-label">Generate addon URL</span>
-          <h3>Connect Podcast Index or Taddy</h3>
-          <p class="sub">Enter either Podcast Index key + secret or Taddy API key + user ID. Once validated, this page generates the manifest URL that Eclipse installs.</p>
+  h += '<div class="card"><span class="badge">Podcast Importer</span>';
+  h += '<h2>Import Podcast to Library</h2>';
+  h += '<p class="sub">Downloads CSV for Eclipse Library → Import CSV.</p>';
+  h += '<div class="lbl">Your Addon URL</div><input type="text" id="impToken" placeholder="Auto-fills after generating">';
+  h += '<div class="lbl">Podcast URL</div><input type="text" id="impUrl" placeholder="podcasts.apple.com/... or RSS feed URL">';
+  h += '<button class="bg" id="impBtn" onclick="doImport()">Fetch & Download CSV</button>';
+  h += '<div class="status" id="impStatus"></div><div class="preview" id="impPreview"></div></div>';
 
-          <div class="grid-2">
-            <div class="field">
-              <label for="piKey">Podcast Index key</label>
-              <input type="text" id="piKey" placeholder="ZQEW8D5ET2L6...">
-            </div>
-            <div class="field">
-              <label for="piSecret">Podcast Index secret</label>
-              <input type="password" id="piSecret" placeholder="Your secret...">
-            </div>
-          </div>
+  h += '<footer>Eclipse Podcast Addon v2.1.1 • Podcast Index + Taddy API • <a href="' + baseUrl + '/health">' + baseUrl + '/health</a></footer>';
 
-          <div class="grid-2" style="margin-top:14px;">
-            <div class="field">
-              <label for="taddyKey">Taddy API key</label>
-              <input type="text" id="taddyKey" placeholder="taddy_xxxxx...">
-            </div>
-            <div class="field">
-              <label for="taddyUserId">Taddy user ID</label>
-              <input type="text" id="taddyUserId" placeholder="123456">
-            </div>
-          </div>
-
-          <p class="hint">Only one provider is required. Podcast Index is the free path. Taddy works too if you already have API access.</p>
-
-          <div class="btn-row" style="margin-top:18px;">
-            <button class="btn-primary" id="genBtn" onclick="generate()" disabled>Enter API credentials first</button>
-          </div>
-          <div class="status" id="credStatus"></div>
-
-          <div class="result-box" id="genBox">
-            <small>Your Eclipse manifest URL</small>
-            <div class="url-box" id="genUrl"></div>
-            <button class="btn-ghost" id="copyGenBtn" onclick="copyGen()">Copy URL</button>
-          </div>
-        </div>
-
-        <div class="panel card">
-          <span class="section-label">Import utility</span>
-          <h3>Import a podcast into Eclipse</h3>
-          <p class="sub">Paste your generated addon URL plus a podcast page or RSS feed. This helper fetches episodes and downloads a CSV for Eclipse Library import.</p>
-
-          <div class="field">
-            <label for="impToken">Your addon URL</label>
-            <input type="text" id="impToken" placeholder="Auto-fills after generation">
-          </div>
-          <div class="field" style="margin-top:14px;">
-            <label for="impUrl">Podcast URL or RSS feed</label>
-            <input type="text" id="impUrl" placeholder="podcasts.apple.com/... or https://example.com/feed.xml">
-          </div>
-
-          <div class="btn-row" style="margin-top:18px;">
-            <button class="btn-secondary" id="impBtn" onclick="doImport()">Fetch &amp; Download CSV</button>
-          </div>
-          <div class="status" id="impStatus"></div>
-          <div class="preview" id="impPreview"></div>
-        </div>
-      </div>
-
-      <div class="stack">
-        <div class="panel card">
-          <span class="section-label">Restore</span>
-          <h3>Reuse an existing addon URL</h3>
-          <p class="sub">If a user already installed a tokenized URL, paste it here to restore the same manifest path without generating a new token.</p>
-          <div class="field">
-            <label for="existingUrl">Existing addon URL</label>
-            <input type="text" id="existingUrl" placeholder="https://your-domain.com/u/xxxxxxxxxxxxxxxxxxxxxxxxxxxx/manifest.json">
-          </div>
-          <div class="btn-row" style="margin-top:18px;">
-            <button class="btn-secondary" id="refBtn" onclick="doRefresh()">Restore existing URL</button>
-          </div>
-          <div class="result-box" id="refBox">
-            <small>Restored manifest URL</small>
-            <div class="url-box" id="refUrl"></div>
-            <button class="btn-ghost" id="copyRefBtn" onclick="copyRef()">Copy URL</button>
-          </div>
-        </div>
-
-        <div class="panel card">
-          <span class="section-label">Install in Eclipse</span>
-          <h3>Quick install steps</h3>
-          <div class="split-note">
-            <div class="bullet"><strong>1. Generate</strong><span>Create your tokenized manifest URL with Podcast Index or Taddy credentials.</span></div>
-            <div class="bullet"><strong>2. Install</strong><span>In Eclipse Music go to Settings → Connections → Add Connection → Addon, then paste the URL.</span></div>
-            <div class="bullet"><strong>3. Browse</strong><span>Because this addon exposes catalog endpoints, albums, creators, and playlists open inside Eclipse instead of falling back elsewhere.</span></div>
-            <div class="bullet"><strong>4. Play</strong><span>The manifest now marks the addon as podcast content, so playback uses the podcast-specific player UI.</span></div>
-          </div>
-          <div class="foot">Eclipse Podcast Addon v2.2.0 · Health endpoint: <a href="${baseUrl}/health" target="_blank" rel="noopener noreferrer">${baseUrl}/health</a><br>Credentials can persist across restarts when REDIS_URL is configured.</div>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <script>
-    var _gu = '', _ru = '';
-    function onCredChange() {
-      var pik = document.getElementById('piKey').value.trim();
-      var pis = document.getElementById('piSecret').value.trim();
-      var tk = document.getElementById('taddyKey').value.trim();
-      var tuid = document.getElementById('taddyUserId').value.trim();
-      var btn = document.getElementById('genBtn');
-      if ((pik && pis) || (tk && tuid)) {
-        btn.disabled = false;
-        btn.textContent = 'Generate Eclipse manifest URL';
-      } else {
-        btn.disabled = true;
-        btn.textContent = 'Enter API credentials first';
-      }
-    }
-    document.getElementById('piKey').oninput = onCredChange;
-    document.getElementById('piSecret').oninput = onCredChange;
-    document.getElementById('taddyKey').oninput = onCredChange;
-    document.getElementById('taddyUserId').oninput = onCredChange;
-
-    function generate() {
-      var pik = document.getElementById('piKey').value.trim();
-      var pis = document.getElementById('piSecret').value.trim();
-      var tk = document.getElementById('taddyKey').value.trim();
-      var tuid = document.getElementById('taddyUserId').value.trim();
-      var btn = document.getElementById('genBtn');
-      var st = document.getElementById('credStatus');
-      if (!pik && !pis && !tk && !tuid) {
-        alert('Enter credentials.');
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Validating credentials...';
-      st.className = 'status spin';
-      st.textContent = 'Checking API keys and generating a podcast manifest...';
-      fetch('/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ piKey: pik, piSecret: pis, taddyKey: tk, taddyUserId: tuid })
-      }).then(function(r){ return r.json(); })
-      .then(function(d){
-        if (d.error) {
-          st.className = 'status err';
-          st.textContent = d.error;
-          btn.disabled = false;
-          btn.textContent = 'Generate Eclipse manifest URL';
-          return;
-        }
-        _gu = d.manifestUrl;
-        document.getElementById('genUrl').textContent = _gu;
-        document.getElementById('genBox').style.display = 'block';
-        document.getElementById('impToken').value = _gu;
-        st.className = 'status ok';
-        st.textContent = 'Podcast addon ready. Paste this URL into Eclipse Music.';
-        btn.disabled = false;
-        btn.textContent = 'Generate another URL';
-      }).catch(function(e){
-        st.className = 'status err';
-        st.textContent = 'Error: ' + e.message;
-        btn.disabled = false;
-        btn.textContent = 'Generate Eclipse manifest URL';
-      });
-    }
-
-    function copyGen() {
-      if (!_gu) return;
-      navigator.clipboard.writeText(_gu).then(function(){
-        var b = document.getElementById('copyGenBtn');
-        b.textContent = 'Copied';
-        setTimeout(function(){ b.textContent = 'Copy URL'; }, 1500);
-      });
-    }
-
-    function doRefresh() {
-      var btn = document.getElementById('refBtn');
-      var eu = document.getElementById('existingUrl').value.trim();
-      if (!eu) {
-        alert('Paste URL.');
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Checking existing URL...';
-      fetch('/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ existingUrl: eu })
-      }).then(function(r){ return r.json(); })
-      .then(function(d){
-        if (d.error) {
-          alert(d.error);
-          btn.disabled = false;
-          btn.textContent = 'Restore existing URL';
-          return;
-        }
-        _ru = d.manifestUrl;
-        document.getElementById('refUrl').textContent = _ru;
-        document.getElementById('refBox').style.display = 'block';
-        document.getElementById('impToken').value = _ru;
-        btn.disabled = false;
-        btn.textContent = 'Restore again';
-      }).catch(function(e){
-        alert('Error: ' + e.message);
-        btn.disabled = false;
-        btn.textContent = 'Restore existing URL';
-      });
-    }
-
-    function copyRef() {
-      if (!_ru) return;
-      navigator.clipboard.writeText(_ru).then(function(){
-        var b = document.getElementById('copyRefBtn');
-        b.textContent = 'Copied';
-        setTimeout(function(){ b.textContent = 'Copy URL'; }, 1500);
-      });
-    }
-
-    function getTok(s) {
-      var m = s.match(/\/u\/([a-f0-9]{28})\//);
-      return m ? m[1] : null;
-    }
-    function hesc(s) {
-      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    function doImport() {
-      var btn = document.getElementById('impBtn');
-      var raw = document.getElementById('impToken').value.trim();
-      var purl = document.getElementById('impUrl').value.trim();
-      var st = document.getElementById('impStatus');
-      var pv = document.getElementById('impPreview');
-      if (!raw || !purl) {
-        st.className = 'status err';
-        st.textContent = 'Enter addon URL and podcast URL.';
-        return;
-      }
-      var tok = getTok(raw);
-      if (!tok) {
-        st.className = 'status err';
-        st.textContent = 'Invalid token in URL.';
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Fetching episodes...';
-      st.className = 'status spin';
-      st.textContent = 'Resolving podcast feed and building CSV...';
-      fetch('/u/' + tok + '/import?url=' + encodeURIComponent(purl))
-        .then(function(r){
-          if (!r.ok) return r.json().then(function(e){ throw new Error(e.error || ('Server error ' + r.status)); });
-          return r.json();
-        })
-        .then(function(data){
-          var tracks = data.tracks || [];
-          if (!tracks.length) throw new Error('No episodes found.');
-          var rows = tracks.slice(0, 50).map(function(t, i){
-            return '<div class="tr"><span class="tn">' + (i + 1) + '</span><div class="ti"><div class="tt">' + hesc(t.title) + '</div><div class="ta">' + hesc(t.artist) + '</div></div></div>';
-          }).join('');
-          if (tracks.length > 50) rows += '<div class="tr" style="justify-content:center;color:#6f7f99">+' + (tracks.length - 50) + ' more</div>';
-          pv.innerHTML = rows;
-          pv.style.display = 'block';
-          st.className = 'status ok';
-          st.textContent = 'Found ' + tracks.length + ' episodes in "' + (data.title || 'podcast') + '"';
-          var lines = ['Title,Artist,Album,Duration'];
-          tracks.forEach(function(t){
-            function ce(s) {
-              s = String(s || '');
-              if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1) s = '"' + s.replace(/"/g, '""') + '"';
-              return s;
-            }
-            lines.push(ce(t.title) + ',' + ce(t.artist) + ',' + ce(data.title || '') + ',' + ce(t.duration || ''));
-          });
-          var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = (data.title || 'podcast').replace(/[^a-zA-Z0-9 _-]/g, '').trim() + '.csv';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          btn.disabled = false;
-          btn.textContent = 'Fetch & Download CSV';
-        }).catch(function(e){
-          st.className = 'status err';
-          st.textContent = e.message;
-          btn.disabled = false;
-          btn.textContent = 'Fetch & Download CSV';
-        });
-    }
-  </script>
-</body>
-</html>`;
+  h += '<script>';
+  h += 'var _gu="",_ru="";';
+  h += 'function onCredChange(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn");if((pik&&pis)||(tk&&tuid)){btn.disabled=false;btn.textContent="Generate My Addon URL";}else{btn.disabled=true;btn.textContent="Enter API credentials first";}}';
+  h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=document.getElementById("taddyKey").oninput=document.getElementById("taddyUserId").oninput=onCredChange;';
+  h += 'function generate(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");if(!pik&&!pis&&!tk&&!tuid){alert("Enter credentials.");return;}btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk,taddyUserId:tuid})}).then(function(r){return r.json();}).then(function(d){if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}_gu=d.manifestUrl;document.getElementById("genUrl").textContent=_gu;document.getElementById("genBox").style.display="block";document.getElementById("impToken").value=_gu;st.className="status ok";st.textContent="✓ Credentials valid — podcast manifest URL ready";btn.disabled=false;btn.textContent="Regenerate";}).catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});}';
+  h += 'function copyGen(){if(!_gu)return;navigator.clipboard.writeText(_gu).then(function(){var b=document.getElementById("copyGenBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
+  h += 'function doRefresh(){var btn=document.getElementById("refBtn"),eu=document.getElementById("existingUrl").value.trim();if(!eu){alert("Paste URL.");return;}btn.disabled=true;btn.textContent="Checking...";fetch("/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({existingUrl:eu})}).then(function(r){return r.json();}).then(function(d){if(d.error){alert(d.error);btn.disabled=false;btn.textContent="Restore";return;}_ru=d.manifestUrl;document.getElementById("refUrl").textContent=_ru;document.getElementById("refBox").style.display="block";document.getElementById("impToken").value=_ru;btn.disabled=false;btn.textContent="Restore Again";}).catch(function(e){alert("Error: "+e.message);btn.disabled=false;btn.textContent="Restore";});}';
+  h += 'function copyRef(){if(!_ru)return;navigator.clipboard.writeText(_ru).then(function(){var b=document.getElementById("copyRefBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
+  h += 'function getTok(s){var m=s.match(/\\/u\\/([a-f0-9]{28})\\//);return m?m[1]:null;}';
+  h += 'function hesc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}';
+  h += 'function doImport(){var btn=document.getElementById("impBtn"),raw=document.getElementById("impToken").value.trim(),purl=document.getElementById("impUrl").value.trim(),st=document.getElementById("impStatus"),pv=document.getElementById("impPreview");if(!raw||!purl){st.className="status err";st.textContent="Enter URL and podcast.";return;}var tok=getTok(raw);if(!tok){st.className="status err";st.textContent="Invalid token in URL.";return;}btn.disabled=true;btn.textContent="Fetching...";st.className="status spin";st.textContent="Fetching episodes...";fetch("/u/"+tok+"/import?url="+encodeURIComponent(purl)).then(function(r){if(!r.ok)return r.json().then(function(e){throw new Error(e.error||("Server error "+r.status));});return r.json();}).then(function(data){var tracks=data.tracks||[];if(!tracks.length)throw new Error("No episodes.");var rows=tracks.slice(0,50).map(function(t,i){return\'<div class="tr"><span class="tn">\'+(i+1)+\'</span><div class="ti"><div class="tt">\'+hesc(t.title)+\'</div><div class="ta">\'+hesc(t.artist)+\'</div></div></div>\';}).join("");if(tracks.length>50)rows+=\'<div class="tr" style="text-align:center;color:#555">+\'+(tracks.length-50)+\' more</div>\';pv.innerHTML=rows;pv.style.display="block";st.className="status ok";st.textContent="Found "+tracks.length+" episodes in \\""+(data.title||"podcast")+"\\"";var lines=["Title,Artist,Album,Duration"];tracks.forEach(function(t){function ce(s){s=String(s||"");if(s.indexOf(",")!==-1||s.indexOf(\'"\')!==-1){s=\'"\'+s.replace(/"/g,\'""\')+\'"\';}return s;}lines.push(ce(t.title)+","+ce(t.artist)+","+ce(data.title||"")+","+ce(t.duration||""));});var blob=new Blob([lines.join("\\n")],{type:"text/csv"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(data.title||"podcast").replace(/[^a-zA-Z0-9 _-]/g,"").trim()+".csv";document.body.appendChild(a);a.click();document.body.removeChild(a);btn.disabled=false;btn.textContent="Download CSV";}).catch(function(e){st.className="status err";st.textContent=e.message;btn.disabled=false;btn.textContent="Download CSV";});}';
+  h += '<\/script></body></html>';
+  return h;
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 app.get('/', (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.send(buildConfigPage(getBaseUrl(req))); });
-app.get('/health', (req, res) => res.json({ status: 'ok', version: '2.2.0', ts: Date.now() }));
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '2.1.1', ts: Date.now() }));
 
 app.post('/generate', async (req, res) => {
   const ip          = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
@@ -1086,16 +407,7 @@ app.post('/refresh', async (req, res) => {
 
 // ─── Manifest ─────────────────────────────────────────────────────────────
 app.get('/u/:token/manifest.json', tokenMiddleware, (req, res) => {
-  res.json({
-    id: 'com.eclipse.podcasts.' + req.params.token.slice(0, 8),
-    name: 'Eclipse Podcasts',
-    version: '2.2.0',
-    description: 'Podcast addon for Eclipse Music via Podcast Index + Taddy.',
-    icon: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRm7Pco873CnlEKMoATgv0rNfOXQNdHg4strPErJftrlg&s=10',
-    resources: ['search', 'stream', 'catalog'],
-    types: ['track', 'album', 'artist', 'playlist'],
-    contentType: 'podcast'
-  });
+  res.json({ id: 'com.eclipse.podcasts.' + req.params.token.slice(0, 8), name: 'Podcasts (PI+Taddy)', version: '2.1.1', description: '4M+ podcasts via Podcast Index + Taddy API.', icon: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRm7Pco873CnlEKMoATgv0rNfOXQNdHg4strPErJftrlg&s=10', resources: ['search', 'stream', 'catalog'], types: ['track', 'album', 'artist', 'playlist'], contentType: 'podcast' });
 });
 
 // ─── Search ───────────────────────────────────────────────────────────────
@@ -1301,4 +613,4 @@ app.get('/u/:token/import', tokenMiddleware, async (req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log('[Server] Eclipse Podcast Addon v2.2.0 on port ' + PORT));
+app.listen(PORT, () => console.log('[Server] Eclipse Podcast Addon v2.1.1 on port ' + PORT));
