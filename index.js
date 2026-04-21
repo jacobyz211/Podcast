@@ -531,6 +531,24 @@ app.get('/u/:token/album/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
   try {
+    if (rawId.startsWith('itpod_')) {
+      const collectionId = rawId.replace('itpod_', '');
+      const data = await itunesGet('/lookup', { id: collectionId, entity: 'podcastEpisode', limit: 200 });
+      const results = data?.results || [];
+      const feed = results.find(r => r.collectionType === 'Podcast' || r.wrapperType === 'track' || r.kind === 'podcast');
+      const eps = results.filter(r => r.kind === 'podcast-episode' && r.episodeUrl);
+      const tracks = eps.map(mapItunesEpisode);
+      return res.json({
+        id: rawId,
+        title: cleanText(feed?.collectionName || feed?.trackName || ''),
+        artist: cleanText(feed?.artistName || feed?.collectionName || ''),
+        artworkURL: artworkHd(feed?.artworkUrl600 || feed?.artworkUrl160 || '') || null,
+        year: feed?.releaseDate ? String(new Date(feed.releaseDate).getFullYear()) : null,
+        description: cleanText(feed?.description || feed?.collectionExplicitness || '').slice(0, 500),
+        trackCount: tracks.length,
+        tracks
+      });
+    }
     if (rawId.startsWith('pi_')) {
       const feedId = rawId.replace('pi_', '');
       const [feedData, epData] = await Promise.all([piGet(entry, '/podcasts/byfeedid', { id: feedId }), piGet(entry, '/episodes/byfeedid', { id: feedId, max: 200, fulltext: true })]);
@@ -554,6 +572,39 @@ app.get('/u/:token/artist/:id', tokenMiddleware, async (req, res) => {
   const rawId = req.params.id;
   const entry = req.tokenEntry;
   try {
+    if (rawId.startsWith('itartist_')) {
+      const artistName = Buffer.from(rawId.replace('itartist_', ''), 'base64url').toString('utf8');
+      const data = await itunesGet('/search', { term: artistName, media: 'podcast', entity: 'podcastEpisode', limit: 50, explicit: 'Yes' });
+      const results = data?.results || [];
+      const exact = results.filter(r => cleanText(r.artistName || '').toLowerCase() === cleanText(artistName).toLowerCase());
+      const matched = exact.length ? exact : results;
+      const topTracks = matched.filter(r => r.kind === 'podcast-episode' && r.episodeUrl).slice(0, 10).map(mapItunesEpisode);
+      const albumMap = new Map();
+      matched.forEach(r => {
+        const cid = r.collectionId ? String(r.collectionId) : null;
+        const cname = cleanText(r.collectionName || '');
+        if (cid && cname && !albumMap.has(cid)) {
+          albumMap.set(cid, {
+            id: 'itpod_' + cid,
+            title: cname,
+            artist: cleanText(r.artistName || artistName),
+            artworkURL: artworkHd(r.artworkUrl600 || r.artworkUrl160 || '') || null,
+            trackCount: null,
+            year: r.releaseDate ? String(new Date(r.releaseDate).getFullYear()) : null
+          });
+        }
+      });
+      const first = matched[0] || {};
+      return res.json({
+        id: rawId,
+        name: artistName,
+        artworkURL: artworkHd(first.artworkUrl600 || first.artworkUrl160 || '') || null,
+        bio: null,
+        genres: [],
+        topTracks,
+        albums: Array.from(albumMap.values())
+      });
+    }
     if (rawId.startsWith('taddy_author_')) {
       const podUuid   = rawId.replace('taddy_author_', '');
       const data      = await taddyQuery(entry, GQL_GET_PODCAST, { uuid: podUuid });
