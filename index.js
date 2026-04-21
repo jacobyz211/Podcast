@@ -440,6 +440,26 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
       })
     ).filter(t => t.streamURL);
 
+    // Build iTunes-derived albums and artists
+    const itunesRaw = (itunesResult?.results || []).filter(ep => ep.kind === 'podcast-episode' && ep.episodeUrl);
+    const itunesAlbumMap = new Map();
+    const itunesArtistMap = new Map();
+    itunesRaw.forEach(ep => {
+      const cid   = ep.collectionId ? String(ep.collectionId) : null;
+      const cname = cleanText(ep.collectionName || ep.artistName || '');
+      const aname = cleanText(ep.artistName || ep.collectionName || '');
+      const art   = artworkHd(ep.artworkUrl600 || ep.artworkUrl160 || '');
+      if (cid && cname && !itunesAlbumMap.has(cid)) {
+        itunesAlbumMap.set(cid, { id: 'itpod_' + cid, title: cname, artist: aname, artworkURL: art, trackCount: null, year: ep.releaseDate ? String(new Date(ep.releaseDate).getFullYear()) : null });
+      }
+      const akey = aname.toLowerCase();
+      if (aname && !itunesArtistMap.has(akey)) {
+        itunesArtistMap.set(akey, { id: 'itartist_' + Buffer.from(aname).toString('base64url'), name: aname, artworkURL: art, genres: [] });
+      }
+    });
+    const itunesAlbums  = Array.from(itunesAlbumMap.values());
+    const itunesArtists = Array.from(itunesArtistMap.values());
+
     const tracks = [...itunesTracks, ...taddyTracks].slice(0, 25);
     const albums = [...itunesAlbums, ...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
 
