@@ -441,7 +441,7 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
     ).filter(t => t.streamURL);
 
     const tracks = [...itunesTracks, ...taddyTracks].slice(0, 25);
-    const albums = [...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
+    const albums = [...itunesAlbums, ...piFeeds.map(mapPiFeed), ...taddyPodcasts.map(mapTaddyPodcast)].slice(0, 15);
 
     const artistMap = new Map();
     piFeeds.forEach(f => {
@@ -455,7 +455,7 @@ app.get('/u/:token/search', tokenMiddleware, async (req, res) => {
       if (!key || artistMap.has(key)) return;
       artistMap.set(key, { id: 'taddy_author_' + String(pod.uuid), name, artworkURL: pod.imageUrl || null, genres: [] });
     });
-    const artists = Array.from(artistMap.values()).slice(0, 6);
+    const artists = [...itunesArtists, ...Array.from(artistMap.values())].slice(0, 6);
 
     const playlists = [
       ...piFeeds.filter(f => f.url).slice(0, 5).map(f => {
