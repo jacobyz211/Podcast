@@ -78,8 +78,9 @@ async function tokenMiddleware(req, res, next) {
   if (!checkRateLimit(entry)) return res.status(429).json({ error: 'Rate limit exceeded.' });
   const hasPi    = entry.piKey && entry.piSecret;
   const hasTaddy = entry.taddyKey && entry.taddyUserId;
-  if (!hasPi && !hasTaddy) {
-    return res.status(403).json({ error: 'No credentials found. Generate a new URL with Podcast Index key/secret OR Taddy API key + User ID.' });
+  const hasApple = true;
+  if (!hasPi && !hasTaddy && !hasApple) {
+    return res.status(403).json({ error: 'No podcast source available.' });
   }
   req.tokenEntry = entry;
   // Save on first request and every 20 thereafter
@@ -316,17 +317,17 @@ function buildConfigPage(baseUrl) {
 
   h += '<div class="card">';
   h += '<h1>Podcasts for Eclipse</h1>';
-  h += '<p class="sub">Choose Podcast Index (free) OR Taddy API. Both unlock 4M+ podcasts. Eclipse will use the podcast player UI automatically via the addon manifest.</p>';
-  h += '<div class="pills"><span class="pill">Episodes & shows</span><span class="pill">Creator pages</span><span class="pill">Playlists</span><span class="pill g">Podcast UI</span><span class="pill g">Offline download</span></div>';
-  h += '<div class="kstep"><div class="kstep-title">Step 1 — Choose your API</div>';
-  h += '<p><b>Podcast Index (Free):</b> Go to <a href="https://api.podcastindex.org" target="_blank">api.podcastindex.org</a>, create account, copy API Key + Secret.</p>';
-  h += '<p><b>Taddy API:</b> Get API Key + User ID from <a href="https://taddy.org" target="_blank">taddy.org</a> dashboard.</p></div>';
+  h += '<p class="sub">Use Apple/iTunes with no keys, or optionally add Podcast Index or Taddy for broader podcast coverage. Eclipse will use the podcast player UI automatically via the addon manifest.</p>';
+  h += '<div class="pills"><span class="pill">Apple/iTunes</span><span class="pill">Episodes & shows</span><span class="pill">Creator pages</span><span class="pill g">Podcast UI</span><span class="pill g">Offline download</span></div>';
+  h += '<div class="kstep"><div class="kstep-title">Step 1 — Choose your source</div>';
+  h += '<p><b>Apple/iTunes (No key required):</b> Leave all fields blank to generate a working addon URL with Apple Podcasts search and stream support.</p><p><b>Podcast Index (Optional):</b> Go to <a href="https://api.podcastindex.org" target="_blank">api.podcastindex.org</a>, create account, copy API Key + Secret.</p>';
+  h += '<p><b>Taddy API (Optional):</b> Get API Key + User ID from <a href="https://taddy.org" target="_blank">taddy.org</a> dashboard.</p></div>';
   h += '<div class="kstep"><div class="kstep-title">Step 2 — Enter credentials</div>';
   h += '<div class="row2"><div><div class="lbl">Podcast Index Key</div><input type="text" id="piKey" placeholder="ZQEW8D5ET2L6..."></div>';
   h += '<div><div class="lbl">Podcast Index Secret</div><input type="password" id="piSecret" placeholder="Your secret..."></div></div>';
   h += '<div class="row2"><div><div class="lbl">Taddy API Key</div><input type="text" id="taddyKey" placeholder="taddy_xxxxx..."></div>';
   h += '<div><div class="lbl">Taddy User ID</div><input type="text" id="taddyUserId" placeholder="123456"></div></div>';
-  h += '<div class="hint">Enter <b>either</b> Podcast Index Key+Secret <b>or</b> Taddy Key+User ID.</div>';
+  h += '<div class="hint">Enter <b>either</b> Podcast Index Key+Secret, <b>or</b> Taddy Key+User ID, <b>or leave everything blank</b> to use Apple/iTunes only.</div>';
   h += '<div class="status" id="credStatus"></div></div>';
   h += '<div class="kstep"><div class="kstep-title">Step 3 — Generate addon URL</div>';
   h += '<button class="bo" id="genBtn" onclick="generate()" disabled>Enter API credentials first</button>';
@@ -354,9 +355,9 @@ function buildConfigPage(baseUrl) {
 
   h += '<script>';
   h += 'var _gu="",_ru="";';
-  h += 'function onCredChange(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn");if((pik&&pis)||(tk&&tuid)){btn.disabled=false;btn.textContent="Generate My Addon URL";}else{btn.disabled=true;btn.textContent="Enter API credentials first";}}';
-  h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=document.getElementById("taddyKey").oninput=document.getElementById("taddyUserId").oninput=onCredChange;';
-  h += 'function generate(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");if(!pik&&!pis&&!tk&&!tuid){alert("Enter credentials.");return;}btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk,taddyUserId:tuid})}).then(function(r){return r.json();}).then(function(d){if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}_gu=d.manifestUrl;document.getElementById("genUrl").textContent=_gu;document.getElementById("genBox").style.display="block";document.getElementById("impToken").value=_gu;st.className="status ok";st.textContent="✓ Credentials valid — podcast manifest URL ready";btn.disabled=false;btn.textContent="Regenerate";}).catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});}';
+  h += 'function onCredChange(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn");if((pik&&!pis)||(!pik&&pis)){btn.disabled=true;btn.textContent="Complete Podcast Index pair";}else if((tk&&!tuid)||(!tk&&tuid)){btn.disabled=true;btn.textContent="Complete Taddy pair";}else{btn.disabled=false;btn.textContent="Generate My Addon URL";}}';
+  h += 'document.getElementById("piKey").oninput=document.getElementById("piSecret").oninput=document.getElementById("taddyKey").oninput=document.getElementById("taddyUserId").oninput=onCredChange;onCredChange();';
+  h += 'function generate(){var pik=document.getElementById("piKey").value.trim(),pis=document.getElementById("piSecret").value.trim(),tk=document.getElementById("taddyKey").value.trim(),tuid=document.getElementById("taddyUserId").value.trim(),btn=document.getElementById("genBtn"),st=document.getElementById("credStatus");if((pik&&!pis)||(!pik&&pis)){alert("Enter both Podcast Index key and secret, or leave both blank.");return;}if((tk&&!tuid)||(!tk&&tuid)){alert("Enter both Taddy key and user ID, or leave both blank.");return;}btn.disabled=true;btn.textContent="Validating...";st.className="status spin";st.textContent="Checking API keys...";fetch("/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({piKey:pik,piSecret:pis,taddyKey:tk,taddyUserId:tuid})}).then(function(r){return r.json();}).then(function(d){if(d.error){st.className="status err";st.textContent=d.error;btn.disabled=false;btn.textContent="Generate URL";return;}_gu=d.manifestUrl;document.getElementById("genUrl").textContent=_gu;document.getElementById("genBox").style.display="block";document.getElementById("impToken").value=_gu;st.className="status ok";st.textContent=(pik||pis||tk||tuid)?"✓ Credentials valid — podcast manifest URL ready":"✓ Apple/iTunes-only podcast manifest URL ready";btn.disabled=false;btn.textContent="Regenerate";}).catch(function(e){st.className="status err";st.textContent="Error: "+e.message;btn.disabled=false;btn.textContent="Generate URL";});}';
   h += 'function copyGen(){if(!_gu)return;navigator.clipboard.writeText(_gu).then(function(){var b=document.getElementById("copyGenBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
   h += 'function doRefresh(){var btn=document.getElementById("refBtn"),eu=document.getElementById("existingUrl").value.trim();if(!eu){alert("Paste URL.");return;}btn.disabled=true;btn.textContent="Checking...";fetch("/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({existingUrl:eu})}).then(function(r){return r.json();}).then(function(d){if(d.error){alert(d.error);btn.disabled=false;btn.textContent="Restore";return;}_ru=d.manifestUrl;document.getElementById("refUrl").textContent=_ru;document.getElementById("refBox").style.display="block";document.getElementById("impToken").value=_ru;btn.disabled=false;btn.textContent="Restore Again";}).catch(function(e){alert("Error: "+e.message);btn.disabled=false;btn.textContent="Restore";});}';
   h += 'function copyRef(){if(!_ru)return;navigator.clipboard.writeText(_ru).then(function(){var b=document.getElementById("copyRefBtn");b.textContent="Copied!";setTimeout(function(){b.textContent="Copy URL";},1500);});}';
@@ -379,10 +380,11 @@ app.post('/generate', async (req, res) => {
   const taddyUserId = cleanText(req.body?.taddyUserId || '');
 
   let valid = false;
-  if (piKey && piSec)               valid = await piValidate(piKey, piSec);
+  if (!piKey && !piSec && !taddyKey && !taddyUserId) valid = true;
+  else if (piKey && piSec) valid = await piValidate(piKey, piSec);
   else if (taddyKey && taddyUserId) valid = await taddyValidate(taddyKey, taddyUserId);
 
-  if (!valid) return res.status(401).json({ error: 'Invalid credentials. Check your Podcast Index or Taddy API keys.' });
+  if (!valid) return res.status(401).json({ error: 'Invalid credentials. Check your Podcast Index or Taddy API keys, or leave all fields blank to use Apple/iTunes support only.' });
   const bucket = getOrCreateIpBucket(ip);
   if (bucket.count >= MAX_TOKENS_PER_IP) return res.status(429).json({ error: 'Too many tokens today from this IP.' });
 
